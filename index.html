@@ -1458,6 +1458,20 @@ function detectIOSAndShowInstallGuide(){
   }
 }
 function dismissIOSPrompt(){ const p=document.querySelector('.ios-install-prompt'); if (p){ p.classList.remove('show'); setTimeout(()=>p.remove(),300); localStorage.setItem('ios-install-dismissed', Date.now().toString()); } }
+<script>
+// Включаем поля промокода сразу после загрузки страницы
+document.addEventListener('DOMContentLoaded', () => {
+  const inp = document.getElementById('promo-inp');
+  const btn = document.getElementById('promo-btn');
+  if (inp) inp.disabled = false;
+  if (btn) btn.disabled = false;
+
+  // Если пользователь уже входил ранее — сразу показываем приложение
+  if (localStorage.getItem('promoPassed') === '1') {
+    showMain();
+  }
+});
+</script>
 
 console.log(`🎵 Витрина Разбита App v${VERSION} (${BUILD_DATE})`);
 </script>
