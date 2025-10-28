@@ -971,48 +971,72 @@ function initializePlayerControls() {
   }
 }
 
-function onAudioMetadataLoaded() {
-  const audio = document.getElementById('audio');
-  const duration = audio.duration;
-  document.getElementById('time-elapsed').textContent = '00:00';
-  document.getElementById('time-remaining').textContent = formatTime(duration);
+function onAudioMetadataLoaded(e) {
+  const audio = (e && (e.currentTarget || e.target)) || document.getElementById('audio');
+  if (!audio) return;
+  const duration = audio.duration || 0;
+  const elapsedEl = document.getElementById('time-elapsed');
+  const remainingEl = document.getElementById('time-remaining');
+  if (elapsedEl) elapsedEl.textContent = '00:00';
+  if (remainingEl) remainingEl.textContent = formatTime(duration);
 }
 
-function onAudioTimeUpdate() {
-  const audio = document.getElementById('audio');
-  const currentTime = audio.currentTime, duration = audio.duration || 0;
-  if (!isSeekingProgress && duration>0) document.getElementById('player-progress-fill').style.width = `${(currentTime/duration)*100}%`;
+function onAudioTimeUpdate(e) {
+  const audio = (e && (e.currentTarget || e.target)) || document.getElementById('audio');
+  if (!audio) return;
+  const currentTime = audio.currentTime || 0;
+  const duration = audio.duration || 0;
+
+  if (!isSeekingProgress && duration > 0) {
+    const fill = document.getElementById('player-progress-fill');
+    if (fill) fill.style.width = `${(currentTime / duration) * 100}%`;
+  }
+
   renderLyricsEnhanced(currentTime);
+
   const now = Date.now();
   if (now - lastTimeUpdate >= 1000) {
     lastTimeUpdate = now;
-    document.getElementById('time-elapsed').textContent = formatTime(currentTime);
-    document.getElementById('time-remaining').textContent = formatTime(duration - currentTime);
+    const elapsedEl = document.getElementById('time-elapsed');
+    const remainingEl = document.getElementById('time-remaining');
+    if (elapsedEl) elapsedEl.textContent = formatTime(currentTime);
+    if (remainingEl) remainingEl.textContent = formatTime(Math.max(0, duration - currentTime));
   }
+
   updatePlayPauseIcon();
 }
 
-function onAudioEnded() {
-  document.getElementById('time-remaining').textContent = '00:00';
-  if (repeatMode) {
-    const audio = document.getElementById('audio');
-    audio.currentTime = 0; audio.play();
-  } else nextTrack();
+function onAudioEnded(e) {
+  const remainingEl = document.getElementById('time-remaining');
+  if (remainingEl) remainingEl.textContent = '00:00';
+
+  const audio = (e && (e.currentTarget || e.target)) || document.getElementById('audio');
+
+  if (repeatMode && audio) {
+    audio.currentTime = 0;
+    const p = audio.play();
+    if (p && p.catch) p.catch(()=>{ /* игнор */ });
+  } else {
+    nextTrack();
+  }
 }
 
 function seekToPosition(e) {
   const audio = document.getElementById('audio');
+  if (!audio || !isFinite(audio.duration) || audio.duration <= 0) return;
   const rect = e.currentTarget.getBoundingClientRect();
-  const percent = (e.clientX - rect.left) / rect.width;
-  audio.currentTime = audio.duration * Math.max(0, Math.min(1, percent));
+  const clientX = e.clientX ?? (e.touches && e.touches[0] && e.touches[0].clientX);
+  if (typeof clientX !== 'number') return;
+  const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+  audio.currentTime = audio.duration * percent;
 }
 
 function onVolumeSliderChange(e) {
-  const value = e.target.value / 100;
+  const value = (e && e.target ? e.target.value : 100) / 100;
   const audio = document.getElementById('audio');
   if (audio) audio.volume = value;
   updateVolumeUI(value);
-  localStorage.setItem('playerVolume', value);
+  try { localStorage.setItem('playerVolume', value); } catch {}
 }
 function updateVolumeUI(volume){ document.getElementById('volume-fill').style.width = `${Math.round(volume*100)}%`; }
 function toggleMute() {
