@@ -312,7 +312,7 @@
 
     <div class="bottom-controls-center">
       <button class="filter-favorites-btn" id="filter-favorites-btn" onclick="toggleFavoritesFilter()">Скрыть не отмеченные ⭐ песни</button>
-      <img class="logo-bottom" id="logo-bottom" src="img/logo.png" alt="Логотип" onclick="handleLogoClick"/>
+      <img class="logo-bottom" id="logo-bottom" src="img/logo.png" alt="Логотип" onclick="handleLogoClick()"/>
 
       <button id="install-pwa-btn" style="display: none;">УСТАНОВИТЬ КАК ПРИЛОЖЕНИЕ</button>
       <button id="download-album-main" onclick="openAlbumDownloadModal()">СКАЧАТЬ ВЕСЬ АЛЬБОМ</button>
@@ -483,6 +483,21 @@ let animationFrame = null;
 
 let filesToDownload = [];
 let __currentAudio = null;
+// Текущий <audio> и безопасная остановка/очистка предыдущего
+function getCurrentAudio() {
+  return __currentAudio || document.getElementById('audio') || null;
+}
+
+function stopAndCleanupAudio(a) {
+  if (!a) return;
+  try { a.pause(); } catch(e) {}
+  try { a.currentTime = 0; } catch(e) {}
+  try {
+    // убираем src и просим браузер «забыть» поток
+    a.removeAttribute('src');
+    a.load();
+  } catch(e) {}
+}
 
 // Безопасное склеивание URL (якорим к корню домена, а не к текущей странице)
 function normalizeBase(b) {
