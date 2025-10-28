@@ -249,8 +249,8 @@
     <div class="promo-inner">
       <img class="promo-cover" id="promo-cover" src="img/logo.png" alt="Обложка" draggable="false"/>
       <h2>Вход по промокоду</h2>
-      <input id="promo-inp" type="text" placeholder="Введите промокод" autocomplete="off" autofocus disabled />
-      <button id="promo-btn" onclick="checkPromo()" disabled>Войти</button>
+      <input id="promo-inp" type="text" placeholder="Введите промокод" autocomplete="off" autofocus />
+      <button id="promo-btn" onclick="checkPromo()">Войти</button>
       <div id="promo-error"></div>
     </div>
   </div>
@@ -841,9 +841,22 @@ function toggleFavoritesFilter() {
 function pickAndPlayTrack(n){ showTrack(n, true); autoPlayEnabled = true; }
 function showTrack(n, doPlay) {
   currentTrack = n;
-  buildTrackList();
-  if (doPlay && document.getElementById('audio')) {
-    setTimeout(()=>{ const audio = document.getElementById('audio'); audio.currentTime = 0; audio.play().catch(()=>{}); }, 140);
+  buildTrackList(); // здесь внутри будет создан <audio> и выставлен src
+
+  if (doPlay) {
+    const audio = document.getElementById('audio');
+    if (audio) {
+      // на всякий — начинаем с 0
+      audio.currentTime = 0;
+      const p = audio.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(err => {
+          // если вдруг браузер всё равно заблокировал — покажем подсказку
+          console.warn('audio.play() blocked:', err);
+          NotificationSystem.info('Нажмите ещё раз по треку для старта воспроизведения');
+        });
+      }
+    }
   }
 }
 
