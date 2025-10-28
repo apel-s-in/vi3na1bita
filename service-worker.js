@@ -1,4 +1,4 @@
-/* service-worker.js — v7.0.2 (для обновлённого приложения)
+/* service-worker.js — v7.0.3 (для обновлённого приложения)
    Поддерживает:
    - OFFLINE режим (SET_OFFLINE_MODE / REQUEST_OFFLINE_STATE)
    - Предзагрузку списка файлов (CACHE_FILES) в офлайн‑кэш
@@ -8,7 +8,7 @@
    - cache-first для остального (изображения, mp3, и т.д.)
 */
 
-const VERSION = '7.0.2';
+const VERSION = '7.0.3';
 const STATIC_CACHE = `vr-static-v${VERSION}`;
 const OFFLINE_CACHE = 'album-offline-v1';
 
