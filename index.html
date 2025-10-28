@@ -846,16 +846,31 @@ function showTrack(n, doPlay) {
   if (doPlay) {
     const audio = document.getElementById('audio');
     if (audio) {
-      // на всякий — начинаем с 0
+      // Снимаем mute и выставляем громкость
+      try {
+        audio.muted = false;
+        const saved = parseFloat(localStorage.getItem('playerVolume'));
+        audio.volume = Number.isFinite(saved) && saved > 0 ? saved : 1;
+      } catch {}
+
+      // Начинаем с начала и пробуем сыграть
       audio.currentTime = 0;
-      const p = audio.play();
-      if (p && typeof p.catch === 'function') {
-        p.catch(err => {
-          // если вдруг браузер всё равно заблокировал — покажем подсказку
-          console.warn('audio.play() blocked:', err);
-          NotificationSystem.info('Нажмите ещё раз по треку для старта воспроизведения');
-        });
-      }
+      const tryPlay = () => {
+        const p = audio.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(err => {
+            console.warn('audio.play() blocked (will retry on canplay):', err);
+            // если браузер не дал — дождёмся готовности и повторим
+            const onReady = () => {
+              audio.removeEventListener('canplay', onReady);
+              const p2 = audio.play();
+              if (p2 && p2.catch) p2.catch(() => {});
+            };
+            audio.addEventListener('canplay', onReady, { once: true });
+          });
+        }
+      };
+      tryPlay();
     }
   }
 }
@@ -873,7 +888,7 @@ function renderLyricsBlock() {
         <div class="player-progress-fill" id="player-progress-fill"><div class="player-progress-handle"></div></div>
       </div>
     </div>
-    <div class="audio-wrapper"><audio id="audio" preload="metadata" aria-hidden="true" tabindex="-1"></audio></div>
+    <div class="audio-wrapper"><audio id="audio" preload="metadata" playsinline crossorigin="anonymous" aria-hidden="true" tabindex="-1"></audio></div>
     <div class="player-controls" role="group" aria-label="Управление воспроизведением">
       <div class="player-controls-row">
         <span class="time-in-controls" id="time-elapsed">00:00</span>
@@ -960,14 +975,13 @@ function initializePlayerControls() {
   const volumeSlider = document.getElementById('volume-slider');
   if (volumeSlider) {
     volumeSlider.addEventListener('input', onVolumeSliderChange);
-    const savedVolume = localStorage.getItem('playerVolume');
-    if (savedVolume !== null) {
-      const volume = parseFloat(savedVolume);
-      volumeSlider.value = Math.round(volume*100);
-      updateVolumeUI(volume);
-      const audio = document.getElementById('audio');
-      if (audio) audio.volume = volume;
-    }
+    const savedVolumeRaw = localStorage.getItem('playerVolume');
+    const savedVolume = parseFloat(savedVolumeRaw);
+    const volume = Number.isFinite(savedVolume) ? savedVolume : 1;
+    volumeSlider.value = Math.round(volume * 100);
+    updateVolumeUI(volume);
+    const audio = document.getElementById('audio');
+    if (audio) audio.volume = volume;
   }
 }
 
@@ -1042,8 +1056,15 @@ function updateVolumeUI(volume){ document.getElementById('volume-fill').style.wi
 function toggleMute() {
   const audio = document.getElementById('audio');
   if (!audio) return;
-  if (isMuted) { audio.volume = parseFloat(localStorage.getItem('playerVolume') || 1); isMuted=false; }
-  else { localStorage.setItem('playerVolume', audio.volume); audio.volume=0; isMuted=true; }
+  if (isMuted) {
+    const saved = parseFloat(localStorage.getItem('playerVolume'));
+    audio.volume = Number.isFinite(saved) && saved > 0 ? saved : 1;
+    isMuted = false;
+  } else {
+    try { localStorage.setItem('playerVolume', audio.volume); } catch {}
+    audio.volume = 0;
+    isMuted = true;
+  }
   updateVolumeUI(audio.volume);
 }
 
