@@ -484,34 +484,30 @@ let animationFrame = null;
 let filesToDownload = [];
 let __currentAudio = null;
 
-// Утилиты
-// Безопасное склеивание URL (учитывает query/hash, домен и слеши)
+// Безопасное склеивание URL (якорим к корню домена, а не к текущей странице)
 function normalizeBase(b) {
   try {
-    const u = new URL(b, location.href);
-    // только origin+pathname, без query/hash, и без завершающего слеша
+    // Если нет схемы — якорим к https://<origin>/ (а не к location.href)
+    const hasScheme = /^[a-z]+:\/\//i.test(String(b));
+    const u = new URL(String(b), hasScheme ? undefined : (location.origin + '/'));
+    // только origin + pathname, без query/hash, без хвостового слэша
     return u.origin + u.pathname.replace(/\/+$/, '');
   } catch {
-    return String(b).replace(/[?#].*$/, '').replace(/\/+$/, '');
+    // Фолбэк: удалим query/hash и хвостовой слэш, якорим к корню
+    const s = String(b || '').replace(/[?#].*$/, '').replace(/\/+$/, '');
+    if (/^https?:\/\//i.test(s)) return s;
+    return location.origin + '/' + s.replace(/^\/+/, '');
   }
 }
 
 function absJoin(base, rel) {
   try {
-    // URL сам корректно обработает .., /, отсутствие слешей и т.д.
-    return new URL(rel, base).toString();
+    // URL корректно склеит даже сложные case (../, ./, без слэша и т.п.)
+    return new URL(String(rel || ''), normalizeBase(base) + '/').toString();
   } catch {
     const norm = normalizeBase(base);
     return norm + '/' + String(rel || '').replace(/^\/+/, '');
   }
-}
-
-function getCurrentAudio() { return __currentAudio || document.getElementById('audio') || null; }
-function stopAndCleanupAudio(a) {
-  if (!a) return;
-  try { a.pause(); } catch {}
-  try { a.currentTime = 0; } catch {}
-  try { a.removeAttribute('src'); a.load(); } catch {}
 }
 
 // Промокод
