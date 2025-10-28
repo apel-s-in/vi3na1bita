@@ -453,6 +453,20 @@ let hasShownBitWarning = false;
 
 let downloadOptions = { includeCovers: true, includeLyrics: true, onlyFavorites: false, fullAlbum: true };
 let filesToDownload = [];
+  
+// === ТЕКУЩЕЕ АУДИО И БЕЗОПАСНАЯ ОСТАНОВКА ===
+let __currentAudio = null;
+
+function getCurrentAudio() {
+  return __currentAudio || document.getElementById('audio') || null;
+}
+
+function stopAndCleanupAudio(a) {
+  if (!a) return;
+  try { a.pause(); } catch {}
+  try { a.currentTime = 0; } catch {}
+  try { a.removeAttribute('src'); a.load(); } catch {}
+}
 
 // Утилиты
 function absJoin(base, rel) {
@@ -840,37 +854,38 @@ function toggleFavoritesFilter() {
 // Плеер (адаптирован из вашего)
 function pickAndPlayTrack(n){ showTrack(n, true); autoPlayEnabled = true; }
 function showTrack(n, doPlay) {
+  // 1) Остановим и очистим предыдущее аудио ДО перестройки DOM
+  stopAndCleanupAudio(getCurrentAudio());
+  __currentAudio = null;
+
+  // 2) Обновляем текущий индекс и строим блок плеера
   currentTrack = n;
-  buildTrackList(); // здесь внутри будет создан <audio> и выставлен src
+  buildTrackList(); // создаёт свежий <audio id="audio"> внутри списка
 
-  if (doPlay) {
-    const audio = document.getElementById('audio');
-    if (audio) {
-      // Снимаем mute и выставляем громкость
-      try {
-        audio.muted = false;
-        const saved = parseFloat(localStorage.getItem('playerVolume'));
-        audio.volume = Number.isFinite(saved) && saved > 0 ? saved : 1;
-      } catch {}
+  // 3) Фиксируем новый элемент как «текущий»
+  const audio = document.getElementById('audio');
+  if (audio) {
+    __currentAudio = audio;
 
-      // Начинаем с начала и пробуем сыграть
+    // Снимем mute и восстановим громкость
+    try {
+      audio.muted = false;
+      const saved = parseFloat(localStorage.getItem('playerVolume'));
+      audio.volume = Number.isFinite(saved) && saved > 0 ? saved : 1;
+    } catch {}
+
+    if (doPlay) {
       audio.currentTime = 0;
-      const tryPlay = () => {
+      const start = () => {
         const p = audio.play();
-        if (p && typeof p.catch === 'function') {
-          p.catch(err => {
-            console.warn('audio.play() blocked (will retry on canplay):', err);
-            // если браузер не дал — дождёмся готовности и повторим
-            const onReady = () => {
-              audio.removeEventListener('canplay', onReady);
-              const p2 = audio.play();
-              if (p2 && p2.catch) p2.catch(() => {});
-            };
-            audio.addEventListener('canplay', onReady, { once: true });
-          });
-        }
+        if (p && p.catch) p.catch(() => {});
       };
-      tryPlay();
+      // если метаданные ещё не готовы — подождём canplay
+      if (isNaN(audio.duration) || !isFinite(audio.duration)) {
+        audio.addEventListener('canplay', start, { once: true });
+      } else {
+        start();
+      }
     }
   }
 }
@@ -922,6 +937,11 @@ function renderLyricsBlock() {
 
   const tr = config.tracks[currentTrack];
   const audioEl = document.getElementById('audio');
+  // Зафиксируем новый экземпляр и на всякий случай остановим прежний
+  if (__currentAudio && __currentAudio !== audioEl) {
+    stopAndCleanupAudio(__currentAudio);
+  }
+  __currentAudio = audioEl;
   audioEl.src = tr.audio;
 
   loadLyrics(tr.lyrics);
@@ -1069,14 +1089,17 @@ function toggleMute() {
 }
 
 function togglePlayPause() {
-  const a = document.getElementById('audio'); if (!a) return;
-  if (a.paused) a.play(); else a.pause();
+  const a = getCurrentAudio(); if (!a) return;
+  if (a.paused) { a.play().catch(()=>{}); } else { a.pause(); }
 }
 function updatePlayPauseIcon() {
   const a = document.getElementById('audio'), icon = document.getElementById('play-pause-icon'); if (!a || !icon) return;
   icon.innerHTML = a.paused ? '<path d="M8 5v14l11-7z"/>' : '<path d="M6 6h4v12H6zM14 6h4v12h-4z"/>';
 }
-function stopPlayback(){ const a=document.getElementById('audio'); if (!a) return; a.pause(); a.currentTime=0; updatePlayPauseIcon(); }
+function stopPlayback(){
+  const a = getCurrentAudio(); if (!a) return;
+  a.pause(); a.currentTime = 0; updatePlayPauseIcon();
+}
 
 function toggleRepeat(){ repeatMode = !repeatMode; const btn=document.getElementById('repeat-btn'); if (repeatMode) btn.classList.add('repeat-active'); else btn.classList.remove('repeat-active'); localStorage.setItem('repeatMode', repeatMode?'1':'0'); }
 function toggleShuffle(){ shuffleMode=!shuffleMode; const btn=document.getElementById('shuffle-btn'); if (shuffleMode){ btn.classList.add('active'); createShuffledPlaylist(); NotificationSystem.info('🔀 Случайный порядок'); } else { btn.classList.remove('active'); NotificationSystem.info('Последовательно'); } localStorage.setItem('shuffleMode', shuffleMode?'1':'0'); }
