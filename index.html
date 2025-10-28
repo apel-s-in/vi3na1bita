@@ -1440,6 +1440,44 @@ function confirmGoOnline(){
   offlineMode=false; localStorage.removeItem('offlineMode'); setOfflineUIState('online'); closeOfflineModal();
   navigator.serviceWorker.ready.then(sw=>{ sw.active.postMessage({ type:'CLEAR_CACHE', offlineMode:false }); });
 }
+// Безопасная проверка таймера сна при возврате на вкладку/фокусе
+function checkSleepTimer() {
+  try {
+    if (!sleepTimerTarget) return;
+    if (Date.now() >= sleepTimerTarget) {
+      // таймер истёк, останавливаем плеер и показываем оверлей
+      executeSleepTimer();
+    } else {
+      // просто обновим бейдж оставшегося времени
+      updateSleepTimerUI();
+    }
+  } catch (e) {
+    // no-op
+  }
+}
+
+// Восстановление подсветки кнопок режимов после рендеринга плеера
+function restorePlayerButtonsState() {
+  try {
+    if (shuffleMode) document.getElementById('shuffle-btn')?.classList.add('active');
+    if (repeatMode) document.getElementById('repeat-btn')?.classList.add('repeat-active');
+
+    if (favoritesOnlyMode) {
+      document.getElementById('favorites-btn')?.classList.add('favorites-active');
+      const icon = document.getElementById('favorites-btn-icon');
+      if (icon) icon.src = 'img/star.png';
+    }
+
+    if (animationEnabled) {
+      document.getElementById('animation-btn')?.classList.add('animation-active');
+    }
+    if (bitEnabled) {
+      document.getElementById('bit-btn')?.classList.add('bit-active');
+    }
+  } catch (e) {
+    // no-op
+  }
+}
 
 // iOS установка
 function detectIOSAndShowInstallGuide(){
