@@ -485,11 +485,27 @@ let filesToDownload = [];
 let __currentAudio = null;
 
 // Утилиты
-function absJoin(base, rel) {
-  if (!rel) return '';
-  if (/^https?:\/\//i.test(rel)) return rel;
-  return base.replace(/\/+$/, '') + '/' + rel.replace(/^\/+/, '');
+// Безопасное склеивание URL (учитывает query/hash, домен и слеши)
+function normalizeBase(b) {
+  try {
+    const u = new URL(b, location.href);
+    // только origin+pathname, без query/hash, и без завершающего слеша
+    return u.origin + u.pathname.replace(/\/+$/, '');
+  } catch {
+    return String(b).replace(/[?#].*$/, '').replace(/\/+$/, '');
+  }
 }
+
+function absJoin(base, rel) {
+  try {
+    // URL сам корректно обработает .., /, отсутствие слешей и т.д.
+    return new URL(rel, base).toString();
+  } catch {
+    const norm = normalizeBase(base);
+    return norm + '/' + String(rel || '').replace(/^\/+/, '');
+  }
+}
+
 function getCurrentAudio() { return __currentAudio || document.getElementById('audio') || null; }
 function stopAndCleanupAudio(a) {
   if (!a) return;
@@ -512,6 +528,18 @@ function checkPromo() {
   }
 }
 document.getElementById('promo-inp').addEventListener('keydown', e => { if (e.key === 'Enter') checkPromo(); });
+// === Устройства с клавиатурой (для показа кнопки "Горячие клавиши")
+function hasKeyboard() {
+  try {
+    const isDesktop = !/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    const hasPointer = matchMedia('(pointer: fine)').matches;
+    const canHover = matchMedia('(hover: hover)').matches;
+    const noTouch = (navigator.maxTouchPoints || 0) === 0;
+    return (isDesktop && hasPointer) || (canHover && noTouch);
+  } catch {
+    return true; // в сомнительных случаях включаем
+  }
+}
 
 function showMain() {
   document.getElementById('promocode-block').classList.add('hidden');
@@ -538,7 +566,7 @@ async function loadAlbumByKey(key) {
   const meta = albumByKey(key);
   if (!meta) { NotificationSystem.error('Альбом не найден'); return; }
   currentAlbumKey = key;
-  albumBase = meta.base;
+  albumBase = normalizeBase(meta.base);
   localStorage.setItem('currentAlbum', currentAlbumKey);
   await loadAlbumConfig(albumBase);
 }
