@@ -1,7 +1,7 @@
 /* service-worker.js — Витрина Разбита PWA
    Совместим с новым index.html: поддерживает OFFLINE режим, кеширование альбомов и командные сообщения
 */
-const VERSION = '7.1.0';
+const VERSION = '7.1.1';
 const CORE_CACHE = `core-v${VERSION}`;
 const ALBUM_CACHE = 'album-offline-v1';
 
