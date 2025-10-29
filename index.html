@@ -314,17 +314,47 @@
     /* Мини‑режим плеера: когда пользователь смотрит другой альбом — плеер сворачивается */
     #now-playing:empty { display: none; }
     .mini-mode .player-buttons-wrapper { display: none !important; } /* скрываем Т, СКОПИРОВАТЬ, СКАЧАТЬ */
-    .next-up { display: none; margin: 8px 4px 0 4px; font-size: .98em; }
-    .mini-mode .next-up { display: block; }
-    .next-up .label { color: #8ab8fd; opacity: .9; margin-right: 6px; }
-    .next-up .title { color: var(--primary-color); font-weight: 700; }
+
+    /* Следующая — одна строка с красным многоточием */
+    .next-up { 
+      display: none;
+      margin: 8px 4px 0 4px; 
+      font-size: .98em; 
+      align-items: center; 
+      gap: 6px;
+    }
+    .mini-mode .next-up { display: flex; }
+    .next-up .label { color: #8ab8fd; opacity: .9; }
+    .next-up .title { 
+      color: var(--primary-color); 
+      font-weight: 700; 
+      white-space: nowrap; 
+      overflow: hidden; 
+      text-overflow: ellipsis;
+      min-width: 0;            /* важно для flex, чтобы работал ellipsis */
+      flex: 1;
+    }
+
     /* Мини‑шапка с текущим треком в мини‑плеере */
-    .mini-now { display: none; align-items: center; padding: 6px 8px; margin: 0 0 6px 0;
-      background: #0f2a3a; border-radius: 8px; border: 1px solid var(--border-color); }
+    .mini-now { 
+      display: none; 
+      align-items: center; 
+      padding: 6px 8px; 
+      margin: 0 0 6px 0;
+      background: #0f2a3a; 
+      border-radius: 8px; 
+      border: 1px solid var(--border-color);
+      cursor: pointer;        /* кликабельна: по клику — перейти в играющий альбом */
+      user-select: none;
+    }
     .mini-mode .mini-now { display: flex; }
     .mini-now .tnum { min-width: 27px; color: #8ab8fd; }
     .mini-now .track-title { margin-left: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-    .mini-now .like-star { margin-left: auto; width: 19px; height: 19px; cursor: pointer; opacity: .97; } 
+    .mini-now .like-star { margin-left: auto; width: 19px; height: 19px; cursor: pointer; opacity: .97; }
+
+    /* В мини‑режиме принудительно отключаем любые эффекты лирики (даже если они были включены) */
+    .mini-mode .lyrics-animated-bg { opacity: 0 !important; animation: none !important; }
+    .mini-mode #lyrics-window.animation-active .lyrics-window-line.active { animation: none !important; }
   </style>
 </head>
 <body>
@@ -574,6 +604,9 @@ let animationFrame = null;
 
 let filesToDownload = [];
 let __currentAudio = null;
+/* Временное скрытие лирики при мини‑режиме */
+let __wasMini = false;
+let __savedLyricsModeForMini = null;  // 'normal' | 'hidden' | 'expanded' или null
 
 /* ====== Совместимость со старым API «getPlayerConfig/playingTrack» ====== */
 function getPlayerConfig() {
@@ -1232,7 +1265,7 @@ function renderLyricsBlock() {
   const block = document.getElementById('lyricsplayerblock') || document.getElementById('now-playing');
   if (!block) return;
   block.innerHTML = `
-    <div class="mini-now" id="mini-now">
+    <div class="mini-now" id="mini-now" onclick="openPlayingAlbumFromMini(event)">
       <span class="tnum" id="mini-now-num">--.</span>
       <span class="track-title" id="mini-now-title">—</span>
       <img src="img/star2.png" class="like-star" id="mini-now-star"
@@ -1573,7 +1606,7 @@ function toggleFavoritesOnly(){
 
     if (inOther) {
       // если текущий трек не в избранных играющего альбома — перейти к первому из избранных
-      if (!getLikedForAlbum(playingAlbumKey).includes(currentTrack)) {
+      if (!getLikedForAlbum(playingAlbumKey).includes(playingTrack)) {
         const first = getLikedForAlbum(playingAlbumKey)[0];
         if (typeof first === 'number') playFromPlaybackAlbum(first, true);
       }
@@ -1643,11 +1676,11 @@ function previousTrack(){
       const cand = playingShuffledPlaylist[playingShuffleIndex] ?? available[0];
       playFromPlaybackAlbum(cand, true);
     } else if (favoritesOnlyMode) {
-      const idx = available.indexOf(currentTrack);
+      const idx = available.indexOf(playingTrack);
       const prev = idx > 0 ? available[idx - 1] : available[available.length - 1];
       playFromPlaybackAlbum(prev, true);
     } else {
-      const prev = currentTrack > 0 ? currentTrack - 1 : (len - 1);
+      const prev = playingTrack > 0 ? playingTrack - 1 : (len - 1);
       playFromPlaybackAlbum(prev, true);
     }
     return;
@@ -1683,17 +1716,17 @@ function nextTrack(){
         playingShuffleIndex = 0;
       }
       let candidate = playingShuffledPlaylist[playingShuffleIndex];
-      if (available.length > 1 && candidate === currentTrack) {
+      if (available.length > 1 && candidate === playingTrack) {
         playingShuffleIndex = (playingShuffleIndex + 1) % playingShuffledPlaylist.length;
         candidate = playingShuffledPlaylist[playingShuffleIndex];
       }
       playFromPlaybackAlbum(candidate, true);
     } else if (favoritesOnlyMode) {
-      const idx = available.indexOf(currentTrack);
+      const idx = available.indexOf(playingTrack);
       const next = available[(idx + 1) % available.length];
       playFromPlaybackAlbum(next, true);
     } else {
-      const n = (currentTrack + 1) % len;
+      const n = (playingTrack + 1) % len;
       playFromPlaybackAlbum(n, true);
     }
     return;
@@ -1757,7 +1790,7 @@ function createPlayingShuffledPlaylist() {
   const available = getAvailableTracksForAlbum(playingAlbumKey, len);
   playingShuffledPlaylist = [...available];
 
-  const i = playingShuffledPlaylist.indexOf(currentTrack);
+  const i = playingShuffledPlaylist.indexOf(playingTrack);
   if (i !== -1) playingShuffledPlaylist.splice(i, 1);
 
   for (let j = playingShuffledPlaylist.length - 1; j > 0; j--) {
@@ -1765,7 +1798,7 @@ function createPlayingShuffledPlaylist() {
     [playingShuffledPlaylist[j], playingShuffledPlaylist[k]] = [playingShuffledPlaylist[k], playingShuffledPlaylist[j]];
   }
 
-  if (available.includes(currentTrack)) playingShuffledPlaylist.unshift(currentTrack);
+  if (available.includes(playingTrack)) playingShuffledPlaylist.unshift(playingTrack);
   playingShuffleIndex = 0;
 }
 
@@ -1838,11 +1871,11 @@ function computeNextIndexPlayback() {
   }
 
   if (favoritesOnlyMode) {
-    const i = available.indexOf(currentTrack);
+    const i = available.indexOf(playingTrack);
     return available[(i + 1) % available.length];
   }
 
-  return (currentTrack + 1) % len;
+  return (playingTrack + 1) % len;
 }
 
 function updateNextUpLabel() {
@@ -1857,14 +1890,41 @@ function updateNextUpLabel() {
   if (cand < 0) { box.style.display = 'none'; return; }
   const title = playingTracks[cand]?.title || '—';
   box.querySelector('.title').textContent = `${String(cand + 1).padStart(2, '0')}. ${title}`;
+  box.querySelector('.title').title = `${String(cand + 1).padStart(2, '0')}. ${title}`;
   box.style.display = ''; // покажем (mini-mode управляет через CSS)
 }
 
 function applyMiniModeUI() {
   const lp = document.getElementById('lyricsplayerblock');
   if (!lp) return;
-  if (isBrowsingOtherAlbum()) lp.classList.add('mini-mode'); else lp.classList.remove('mini-mode');
-  // сразу синхронизируем подписи
+
+  const inMini = isBrowsingOtherAlbum();
+
+  if (inMini) {
+    lp.classList.add('mini-mode');
+
+    // При первом входе в мини‑режим запомним режим лирики и временно спрячем окно
+    if (!__wasMini) {
+      __savedLyricsModeForMini = lyricsViewMode;  // запоминаем
+      if (lyricsViewMode !== 'hidden') {
+        lyricsViewMode = 'hidden';
+        applyLyricsViewMode(); // не вызываем saveLyricsViewMode — это временно
+      }
+    }
+  } else {
+    lp.classList.remove('mini-mode');
+
+    // При выходе из мини‑режима вернём прежний вид лирики (если был сохранён)
+    if (__wasMini && __savedLyricsModeForMini && lyricsViewMode !== __savedLyricsModeForMini) {
+      lyricsViewMode = __savedLyricsModeForMini;
+      applyLyricsViewMode(); // без сохранения в localStorage — поведение как «вернуть как было»
+    }
+    __savedLyricsModeForMini = null;
+  }
+
+  __wasMini = inMini;
+
+  // Обновим подписи
   updateMiniNowHeader();
   updateNextUpLabel();
 }
@@ -1878,11 +1938,10 @@ function updateMiniNowHeader() {
                playingTrack >= 0;
 
   if (!show) {
-    box.style.display = 'none';
+    box.style.display = 'none'; // можно '' если хотите отдать управление CSS
     return;
   }
 
-  // Важно: снять предыдущий inline "display:none" и показать шапку
   box.style.display = 'flex';
 
   const numEl = document.getElementById('mini-now-num');
@@ -1904,6 +1963,25 @@ function toggleLikePlayingFromMini(e) {
   toggleLikePlaying();
   updateMiniNowHeader();
   updateNextUpLabel();
+}
+async function openPlayingAlbumFromMini(e) {
+  // Не реагируем, если клик по звёздочке или уже в нужном альбоме
+  if (e && e.target && e.target.id === 'mini-now-star') return;
+  if (!playingAlbumKey || currentAlbumKey === playingAlbumKey) return;
+  const lp = document.getElementById('lyricsplayerblock');
+  if (!lp) return;
+
+  try {
+    const sel = document.getElementById('album-select');
+    if (sel) sel.value = playingAlbumKey;
+    await loadAlbumByKey(playingAlbumKey);
+
+    // Плеер сам перенесётся под текущий трек (это уже сделано в buildTrackList),
+    // добавим плавный скролл к текущей строке
+    setTimeout(() => {
+      document.getElementById(`trk${currentTrack}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 250);
+  } catch {}
 }
 
 function attachPlaybackStateListeners() {
