@@ -136,16 +136,52 @@
 
     .player-controls { display:flex; flex-direction:column; gap:5px; margin:5px 0; padding:8px 10px; background:rgba(0,0,0,0.3); border-radius:12px; }
     .player-controls-row { display:flex; align-items:center; justify-content:center; gap:12px; }
-    .player-control-btn { background:none; border:none; color:var(--secondary-color); cursor:pointer; padding:4px; border-radius:50%; transition:all .2s; display:flex; align-items:center; justify-content:center; width:32px; height:32px; font-weight:bold; font-size:16px; position:relative; }
+    .player-control-btn {
+      background:none; border:none; color:var(--secondary-color); cursor:pointer; padding:4px; border-radius:50%;
+      transition:all .2s; display:flex; align-items:center; justify-content:center;
+      width:32px; height:32px; font-weight:bold; font-size:16px; position:relative;
+      /* ВАЖНО: не даём контенту вылезать за границы кнопки */
+      overflow: hidden;
+    }
     .player-controls-row:first-child .player-control-btn { width:48px; height:48px; padding:8px; }
     .player-controls-row:first-child .player-control-btn svg { width:28px; height:28px; }
+
     .player-control-btn:hover { background: rgba(77,170,255,.2); transform: scale(1.1); }
     .player-control-btn:active { transform: scale(.95); }
-    .player-control-btn.active, .player-control-btn.repeat-active { color:var(--primary-color); background: rgba(232,1,0,.2); }
+
+    .player-control-btn.active,
+    .player-control-btn.repeat-active { color:var(--primary-color); background: rgba(232,1,0,.2); }
+
     .player-control-btn.favorites-active { background: rgba(255,215,0,.3); }
-    .player-control-btn.animation-btn, .player-control-btn.bit-btn { font-size:22px; font-weight:bold; }
-    .player-control-btn.animation-active, .player-control-btn.bit-active { color: var(--primary-color); background: rgba(232,1,0,.2); }
+
+    .player-control-btn.animation-btn,
+    .player-control-btn.bit-btn { font-size:22px; font-weight:bold; }
+
+    .player-control-btn.animation-active,
+    .player-control-btn.bit-active { color: var(--primary-color); background: rgba(232,1,0,.2); }
+
+    /* Иконки SVG в кнопках */
     .player-control-btn svg { width:24px; height:24px; }
+
+    /* ДОБАВЛЕНО: фиксируем размеры картинок внутри кнопок (в т.ч. звезды избранного) */
+    .player-control-btn img {
+      width: 22px;
+      height: 22px;
+      display: block;
+      object-fit: contain;
+      pointer-events: none; /* клики остаются на кнопке */
+    }
+
+    /* Необязательно: подсвет и лёгкая пульсация активной звезды */
+    .player-control-btn.favorites-active img { filter: drop-shadow(0 0 4px gold); }
+
+    @keyframes pulseFav {
+      0%,100% { transform: scale(1); }
+      50%     { transform: scale(1.1); }
+    }
+    .player-control-btn.favorites-active img { animation: pulseFav 2s infinite; }
+
+    /* Главная центральная кнопка побольше */
     .player-control-btn.main { width:54px; height:54px; }
     .player-control-btn.main svg { width:30px; height:30px; }
 
