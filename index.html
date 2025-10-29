@@ -961,30 +961,39 @@ function isLiked(idx) {
 /* ====== Треки (список) ====== */
 function buildTrackList() {
   const list = document.getElementById('track-list');
-  if (!config) { list.innerHTML=''; return; }
+  if (!config) { list.innerHTML = ''; return; }
+
+  // Плеер уже «сохранён» во внешнем контейнере now-playing?
+  const preservedInNowPlaying = !!document.getElementById('now-playing')?.querySelector('#lyricsplayerblock');
+
   let html = '';
-  for (let i=0;i<config.tracks.length;i++) {
+  for (let i = 0; i < config.tracks.length; i++) {
     const t = config.tracks[i];
-    html += `<div class="track${i===currentTrack?' current':''}" id="trk${i}" onclick="pickAndPlayTrack(${i})">
-      <span class="tnum">${String(i+1).padStart(2,'0')}.</span>
+    html += `<div class="track${i === currentTrack ? ' current' : ''}" id="trk${i}" onclick="pickAndPlayTrack(${i})">
+      <span class="tnum">${String(i + 1).padStart(2, '0')}.</span>
       <span class="track-title">${t.title}</span>
-      <img src="${isLiked(i)?'img/star.png':'img/star2.png'}" class="like-star" alt="звезда" title="${isLiked(i)?'Убрать из понравившихся':'Добавить в понравившиеся'}" onclick="toggleLike(${i}, event)"/>
+      <img src="${isLiked(i) ? 'img/star.png' : 'img/star2.png'}"
+           class="like-star"
+           alt="звезда"
+           title="${isLiked(i) ? 'Убрать из понравившихся' : 'Добавить в понравившиеся'}"
+           onclick="toggleLike(${i}, event)"/>
     </div>`;
-    if (i===currentTrack && !document.getElementById('lyricsplayerblock')) {
+
+    // Если плеер НЕ сохранён во внешнем контейнере — добавляем placeholder под текущим треком
+    if (i === currentTrack && !preservedInNowPlaying) {
       html += `<div class="lyrics-player-block" id="lyricsplayerblock"></div>`;
     }
   }
+
   list.innerHTML = html;
+
   if (favoritesFilterActive) {
     list.classList.add('filtered');
     updateFavoriteClasses();
   }
 
-  // ВАЖНО: если плеер сохранён во внешнем контейнере (#now-playing), НЕ перерисовываем его
-  const lp = document.getElementById('lyricsplayerblock');
-  const preserved = lp && lp.parentElement && lp.parentElement.id === 'now-playing';
-
-  if (!preserved && currentTrack >= 0) {
+  // Если плеер не сохранён в now-playing — отрисовываем блок и инициализируем плеер
+  if (!preservedInNowPlaying && currentTrack >= 0) {
     renderLyricsBlock();
   }
 }
