@@ -1,253 +1,230 @@
-/* service-worker.js — v7.0.3 (для обновлённого приложения)
-   Поддерживает:
-   - OFFLINE режим (SET_OFFLINE_MODE / REQUEST_OFFLINE_STATE)
-   - Предзагрузку списка файлов (CACHE_FILES) в офлайн‑кэш
-   - Очистку офлайн‑кэша (CLEAR_CACHE)
-   - Range‑запросы для аудио из кэша
-   - network-first для HTML и *.json (albums.json, config.json альбомов)
-   - cache-first для остального (изображения, mp3, и т.д.)
+/* service-worker.js — Витрина Разбита PWA
+   Совместим с новым index.html: поддерживает OFFLINE режим, кеширование альбомов и командные сообщения
 */
+const VERSION = '7.1.0';
+const CORE_CACHE = `core-v${VERSION}`;
+const ALBUM_CACHE = 'album-offline-v1';
 
-const VERSION = '7.0.3';
-const STATIC_CACHE = `vr-static-v${VERSION}`;
-const OFFLINE_CACHE = 'album-offline-v1';
-
-// Что кладём в статический кэш при установке SW
-const STATIC_ASSETS = [
-  './',
-  './index.html',
-  './manifest.json',
-  './albums.json',
-  './img/logo.png',
-  './img/star.png',
-  './img/star2.png',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/apple-touch-icon.png'
+/* Базовые оффлайн‑ресурсы приложения (корневые, без альбомов) */
+const CORE_ASSETS = [
+  '/',                 // навигация
+  '/index.html',
+  '/manifest.json',
+  '/albums.json',
+  '/img/logo.png',
+  '/img/star.png',
+  '/img/star2.png',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon-192-maskable.png',
+  '/icons/icon-512-maskable.png'
 ];
 
-// Флаги состояния
+/* Флаг принудительного cache-first режима (кнопка OFFLINE в UI) */
 let offlineMode = false;
 
-// Установка SW
+/* Утилита: безопасный fetch с таймаутом */
+async function safeFetch(request, { timeout = 15000, cachePut = null } = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeout);
+  try {
+    const res = await fetch(request, { signal: ctrl.signal });
+    if (res && res.ok && cachePut) {
+      try {
+        const cache = await caches.open(cachePut);
+        await cache.put(request, res.clone());
+      } catch {}
+    }
+    return res;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/* Широковещательное сообщение всем клиентам */
+async function broadcast(msg) {
+  try {
+    const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
+    clients.forEach(c => c.postMessage(msg));
+  } catch {}
+}
+
+/* Установочный этап */
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
-    const cache = await caches.open(STATIC_CACHE);
+    const cache = await caches.open(CORE_CACHE);
     try {
-      await cache.addAll(STATIC_ASSETS);
-    } catch (e) {
-      // На всякий — продолжаем, даже если не всё закешировалось
+      await cache.addAll(CORE_ASSETS);
+    } catch {
+      // Игнорируем частичные ошибки — часть ассетов может быть недоступна в dev
     }
-    self.skipWaiting();
+    await self.skipWaiting();
   })());
 });
 
-// Активация SW: чистим старые кэши
+/* Активация: очистка старых кэшей core, сохранение кэша альбомов */
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
-    const keys = await caches.keys();
+    const names = await caches.keys();
     await Promise.all(
-      keys
-        .filter(k => k !== STATIC_CACHE && k !== OFFLINE_CACHE)
-        .map(k => caches.delete(k))
+      names
+        .filter(n => n.startsWith('core-') && n !== CORE_CACHE)
+        .map(n => caches.delete(n))
     );
     await self.clients.claim();
-    // Сообщим клиентам, что кэш обновлён
-    try {
-      const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-      clients.forEach(c => c.postMessage({ type: 'CACHE_UPDATED', version: VERSION }));
-    } catch (e) {}
+    // Сообщим текущий offline‑режим при активации
+    broadcast({ type: 'OFFLINE_STATE', value: offlineMode });
   })());
 });
 
-// Основная логика fetch
+/* Стратегия ответа на запросы */
 self.addEventListener('fetch', (event) => {
   const req = event.request;
+
+  // Только GET
+  if (req.method !== 'GET') return;
+
   const url = new URL(req.url);
-  const accept = req.headers.get('accept') || '';
 
-  // Обработка Range‑запросов (обычно для аудио/mp3)
-  if (req.headers.get('range')) {
-    event.respondWith(handleRangeRequest(req));
+  // Игнорируем chrome-extension и прочие схемы
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+
+  // Навигационные запросы (страницы)
+  if (req.mode === 'navigate') {
+    event.respondWith((async () => {
+      // Сначала сеть, затем кэш
+      try {
+        const res = await safeFetch(req, { timeout: 8000, cachePut: CORE_CACHE });
+        if (res && res.ok) return res;
+        throw new Error('network failed');
+      } catch {
+        const cache = await caches.open(CORE_CACHE);
+        const cached = await cache.match('/index.html');
+        if (cached) return cached;
+        // Последний шанс — любой закэшированный index
+        const keys = await cache.keys();
+        const fallback = await cache.match(keys.find(k => new URL(k.url).pathname.endsWith('/index.html')) || '/index.html');
+        return fallback || Response.error();
+      }
+    })());
     return;
   }
 
-  // Навигация / HTML → network-first
-  if (req.mode === 'navigate' || accept.includes('text/html')) {
-    event.respondWith(networkFirst(req));
-    return;
-  }
+  // Ресурсы приложения (картинки/иконки/manifest)
+  const isAppAsset = url.origin === self.location.origin;
 
-  // albums.json и любые config.json (альбомов) → network-first
-  if (url.pathname.endsWith('/albums.json') || url.pathname.endsWith('/config.json')) {
-    event.respondWith(networkFirst(req));
-    return;
-  }
-
-  // Прочее → cache-first
-  event.respondWith(cacheFirstWithBackfill(req));
-});
-
-// Стратегии
-async function networkFirst(request) {
-  try {
-    const net = await fetch(request);
-    if (net && net.ok) {
-      // Обновим статический кэш для этих ресурсов
-      const cache = await caches.open(STATIC_CACHE);
-      cache.put(request, net.clone());
-    }
-    return net;
-  } catch (e) {
-    const cached = await caches.match(request);
-    if (cached) return cached;
-    return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
-  }
-}
-
-async function cacheFirstWithBackfill(request) {
-  // Сначала пробуем из любого кэша
-  const cached = await caches.match(request);
-  if (cached) return cached;
-
-  // Если OFFLINE режим — сразу 503
+  // Включённый OFFLINE режим — cache-first для всего, с догрузкой в кэш
   if (offlineMode) {
-    return new Response('Offline - resource not cached', { status: 503, statusText: 'Service Unavailable' });
+    event.respondWith((async () => {
+      const cacheName = isAppAsset ? CORE_CACHE : ALBUM_CACHE;
+      const cache = await caches.open(cacheName);
+      const hit = await cache.match(req, { ignoreSearch: false });
+      if (hit) return hit;
+
+      // Пытаемся из сети, кэшируем как есть (допускаем opaque)
+      try {
+        const res = await safeFetch(req);
+        if (res && (res.ok || res.type === 'opaque')) {
+          try { await cache.put(req, res.clone()); } catch {}
+          return res;
+        }
+      } catch {}
+      // Фолбэк — любой кэш
+      const any = await caches.match(req, { ignoreSearch: false });
+      return any || Response.error();
+    })());
+    return;
   }
 
-  // Иначе тянем из сети и докладываем в кэш
-  try {
-    const net = await fetch(request);
-    if (net && net.ok) {
-      // В какой кэш класть? Для стабильности — в STATIC_CACHE (runtime)
-      const cache = await caches.open(STATIC_CACHE);
-      cache.put(request, net.clone());
+  // Обычный режим: app-ассеты — network-first, альбомы/внешние — stale-while-revalidate
+  event.respondWith((async () => {
+    if (isAppAsset) {
+      // network-first для ассетов приложения
+      try {
+        const res = await safeFetch(req, { timeout: 8000, cachePut: CORE_CACHE });
+        if (res && res.ok) return res;
+        throw new Error('net-fail');
+      } catch {
+        const cached = await caches.match(req, { ignoreSearch: false });
+        return cached || Response.error();
+      }
+    } else {
+      // Стратегия S-W-R для внешних (аудио, лирика, обложки с GitHub Pages и т.д.)
+      const cache = await caches.open(ALBUM_CACHE);
+      const cached = await cache.match(req, { ignoreSearch: false });
+      const netPromise = (async () => {
+        try {
+          const res = await safeFetch(req);
+          if (res && (res.ok || res.type === 'opaque')) {
+            try { await cache.put(req, res.clone()); } catch {}
+            return res;
+          }
+        } catch {}
+        return null;
+      })();
+      // Если есть кэш — возвращаем его, сеть обновит в фоне
+      if (cached) {
+        event.waitUntil(netPromise);
+        return cached;
+      }
+      // Иначе ждём сеть
+      const net = await netPromise;
+      return net || Response.error();
     }
-    return net;
-  } catch (e) {
-    return new Response('Network error', { status: 503, statusText: 'Service Unavailable' });
+  })());
+});
+
+/* Команды от страницы */
+self.addEventListener('message', (event) => {
+  const data = event.data || {};
+  const type = data.type;
+
+  if (type === 'SET_OFFLINE_MODE') {
+    offlineMode = !!data.value;
+    broadcast({ type: 'OFFLINE_STATE', value: offlineMode });
+    return;
   }
-}
 
-// Range‑ответ для аудио из кэша/сети
-async function handleRangeRequest(request) {
-  try {
-    // Сначала ищем в OFFLINE_CACHE, затем в STATIC_CACHE
-    const url = request.url;
-    const off = await caches.open(OFFLINE_CACHE);
-    let cached = await off.match(url);
-    if (!cached) {
-      const stat = await caches.open(STATIC_CACHE);
-      cached = await stat.match(url);
-    }
-
-    // Если нет в кэше:
-    if (!cached) {
-      if (offlineMode) {
-        return new Response('Offline - audio not cached', { status: 503, statusText: 'Service Unavailable' });
-      }
-      // В онлайне просто проксируем запрос в сеть (браузер сам обработает Range)
-      return fetch(request);
-    }
-
-    // Есть в кэше полный файл — режем по Range
-    const rangeHeader = request.headers.get('range');
-    if (!rangeHeader) return cached;
-
-    const fullBlob = await cached.blob();
-    const fullSize = fullBlob.size;
-
-    const m = rangeHeader.match(/bytes=(\d+)-(\d*)/);
-    if (!m) return cached;
-
-    const start = parseInt(m[1], 10);
-    const end = m[2] ? parseInt(m[2], 10) : fullSize - 1;
-
-    if (isNaN(start) || start < 0 || start >= fullSize || end >= fullSize) {
-      return new Response('Range Not Satisfiable', {
-        status: 416,
-        headers: { 'Content-Range': `bytes */${fullSize}` }
-      });
-    }
-
-    const chunk = fullBlob.slice(start, end + 1);
-    return new Response(chunk, {
-      status: 206,
-      statusText: 'Partial Content',
-      headers: {
-        'Content-Range': `bytes ${start}-${end}/${fullSize}`,
-        'Accept-Ranges': 'bytes',
-        'Content-Length': String(end - start + 1),
-        'Content-Type': cached.headers.get('Content-Type') || 'audio/mpeg'
-      }
-    });
-  } catch (e) {
-    // На ошибке — отдаём сеть (если можно)
-    try { return await fetch(request); } catch { return new Response('Network error', { status: 503 }); }
+  if (type === 'REQUEST_OFFLINE_STATE') {
+    broadcast({ type: 'OFFLINE_STATE', value: offlineMode });
+    return;
   }
-}
 
-// Сообщения от клиента
-self.addEventListener('message', async (event) => {
-  const msg = event.data || {};
-  const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-  const replyAll = (data) => clients.forEach(c => c.postMessage(data));
+  if (type === 'CACHE_FILES') {
+    const files = Array.isArray(data.files) ? data.files : [];
+    event.waitUntil(cacheFiles(files));
+    // По желанию можно сразу включать оффлайн после кэширования:
+    // if (data.offlineMode) { offlineMode = true; broadcast({ type:'OFFLINE_STATE', value:true }); }
+    return;
+  }
 
-  switch (msg.type) {
-    case 'SET_OFFLINE_MODE':
-      offlineMode = !!msg.value;
-      replyAll({ type: 'OFFLINE_STATE', value: offlineMode });
-      break;
-
-    case 'REQUEST_OFFLINE_STATE':
-      event.source && event.source.postMessage({ type: 'OFFLINE_STATE', value: offlineMode });
-      break;
-
-    case 'CACHE_FILES':
-      // msg.files: список URL (абсолютные/относительные)
-      await cacheFilesForOffline(Array.isArray(msg.files) ? msg.files : []);
-      if (typeof msg.offlineMode === 'boolean') {
-        offlineMode = msg.offlineMode;
-        replyAll({ type: 'OFFLINE_STATE', value: offlineMode });
+  if (type === 'CLEAR_CACHE') {
+    event.waitUntil((async () => {
+      try {
+        await caches.delete(ALBUM_CACHE);
+        await caches.open(ALBUM_CACHE); // создать пустой
+      } catch {}
+      if (typeof data.offlineMode !== 'undefined') {
+        offlineMode = !!data.offlineMode;
+        broadcast({ type: 'OFFLINE_STATE', value: offlineMode });
       }
-      break;
-
-    case 'CLEAR_CACHE':
-      await clearOfflineCache();
-      offlineMode = !!msg.offlineMode;
-      replyAll({ type: 'OFFLINE_STATE', value: offlineMode });
-      break;
+    })());
+    return;
   }
 });
 
-// Кладём список файлов в OFFLINE_CACHE
-async function cacheFilesForOffline(files) {
-  if (!files.length) return;
-  const cache = await caches.open(OFFLINE_CACHE);
-  for (const url of files) {
+/* Кэширование списка файлов (включая кросс‑доменные mp3/обложки/lyric json/txt) */
+async function cacheFiles(urls) {
+  const cache = await caches.open(ALBUM_CACHE);
+  for (const raw of urls) {
     try {
-      // Не перекашируем, если уже лежит
-      const exists = await cache.match(url);
-      if (exists) continue;
-
-      // Тянем из сети (HEAD здесь не используем — сразу GET для реального оффлайна)
-      const resp = await fetch(url, { credentials: 'omit' });
-      if (resp && resp.ok) {
-        await cache.put(url, resp.clone());
+      const req = new Request(raw, { mode: 'no-cors', credentials: 'omit', redirect: 'follow' });
+      const res = await fetch(req);
+      if (res && (res.ok || res.type === 'opaque')) {
+        try { await cache.put(req, res.clone()); } catch {}
       }
-    } catch (e) {
-      // Пропускаем неудачные URL
+    } catch {
+      // пропускаем ошибки для отдельных файлов
     }
   }
 }
-
-// Чистим OFFLINE_CACHE
-async function clearOfflineCache() {
-  try {
-    await caches.delete(OFFLINE_CACHE);
-  } catch (e) {
-    // ignore
-  }
-}
-
-console.log('[SW] Service Worker v' + VERSION + ' ready');
