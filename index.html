@@ -1048,7 +1048,7 @@ function buildTrackList() {
   if (preservedInNowPlaying && currentAlbumKey === playingAlbumKey) {
     const holder = document.getElementById('now-playing');
     const lp = holder?.querySelector('#lyricsplayerblock');
-    const ph = document.getElementById('lyricsplayerblock');
+    const ph = list.querySelector('#lyricsplayerblock'); // берём плейсхолдер из списка
     if (lp && ph && lp !== ph) {
       ph.replaceWith(lp);
       holder.innerHTML = ''; // контейнер теперь пустой
@@ -1859,10 +1859,19 @@ function applyMiniModeUI() {
 function updateMiniNowHeader() {
   const box = document.getElementById('mini-now');
   if (!box) return;
-  const show = isBrowsingOtherAlbum() && Array.isArray(playingTracks) && playingTracks.length > 0 && playingTrack >= 0;
-  if (!show) { box.style.display = 'none'; return; }
 
-  // Заполним контент
+  const show = isBrowsingOtherAlbum() &&
+               Array.isArray(playingTracks) && playingTracks.length > 0 &&
+               playingTrack >= 0;
+
+  if (!show) {
+    box.style.display = 'none';
+    return;
+  }
+
+  // Важно: снять предыдущий inline "display:none" и показать шапку
+  box.style.display = 'flex';
+
   const numEl = document.getElementById('mini-now-num');
   const titleEl = document.getElementById('mini-now-title');
   const starEl = document.getElementById('mini-now-star');
