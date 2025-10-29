@@ -118,8 +118,8 @@
     .lyrics-player-block { width: 100%; margin: 8px 0 3px 0; }
     #lyrics-window { width: 100%; background: rgba(34,34,34,0.98); border-radius: 12px; box-shadow: 0 8px 24px #0007; overflow: hidden; height: 8.5em; position: relative; display: flex; flex-direction: column; align-items: stretch; justify-content: center; margin-bottom: 7px; transition: height 0.2s ease, opacity 0.2s ease, margin 0.2s ease; will-change: height, opacity; }
     #lyrics-window.lyrics-hidden { height: 0 !important; opacity: 0; margin: 0; overflow: hidden; pointer-events: none; }
-    #lyrics-window.lyrics-normal { height: 8.5em; }
-    #lyrics-window.lyrics-expanded { height: 15.3em; }
+    #lyrics-window.lyrics-normal { height: 8.7em; }      /* 5 * 1.7em + запас */
+    #lyrics-window.lyrics-expanded { height: 15.6em; }   /* 9 * 1.7em + запас */
     .lyrics-scroll { position: relative; z-index: 1; }
     .lyrics-window-line { opacity: 0.57; font-size: 1.13em; transition: all 0.2s; line-height: 1.7em; text-align: center; min-height: 1.7em; max-width: 97%; margin: 0 auto; color: #eee; white-space: pre-line; user-select: none; word-break: break-word; position: relative; z-index: 1; }
     .lyrics-window-line.active { color: var(--primary-color); font-weight: bold; opacity: 1; text-shadow: 0 1px 7px #73161644; background: rgba(0,0,0,0.07); border-radius: 8px; font-size: 1.19em; }
@@ -192,7 +192,7 @@
 
     .time-in-controls { font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size:13px; color:var(--secondary-color); min-width:45px; text-align:center; user-select:none; }
 
-    .volume-control-wrapper { width:100%; margin:5px 0; padding:0 10px; position:relative; }
+    .volume-control-wrapper { width:100%; margin:5px 0; padding:0; position:relative; }
     .volume-track { position:absolute; top:50%; transform:translateY(-50%); width:100%; height:6px; background:rgba(255,255,255,.2); border-radius:3px; pointer-events:none; }
     .volume-fill { position:absolute; top:50%; transform:translateY(-50%); height:6px; background:var(--secondary-color); border-radius:3px; pointer-events:none; transition: width .1s; }
     .volume-slider { appearance:none; width:100%; height:20px; background:transparent; outline:none; cursor:pointer; position:relative; z-index:2; }
@@ -343,6 +343,9 @@
 
       <div id="social-links" class="socials-under-cover"></div>
     </header>
+
+    <!-- Текущий проигрыватель, сохраняется при переключении альбома -->
+    <div id="now-playing" style="width:100%; max-width:395px; margin:8px auto 0 auto;"></div>
 
     <div class="track-list" id="track-list"></div>
 
@@ -659,7 +662,19 @@ async function loadAlbumConfig(base) {
     document.getElementById('album-title-modal').textContent = (config.albumName || 'Альбом');
     buildSocials();
 
-    currentTrack = -1;
+    // Не прерываем текущее проигрывание: если плеер существует — переносим его во внешний контейнер
+    (function preservePlayer() {
+      const lp = document.getElementById('lyricsplayerblock');
+      const holder = document.getElementById('now-playing');
+      if (lp && holder) {
+        if (!holder.contains(lp)) {
+          holder.innerHTML = '';
+          holder.appendChild(lp);
+        }
+      }
+    })();
+
+    // Перестраиваем список треков нового альбома (без сброса currentTrack)
     buildTrackList();
     updateAvailableTracks();
 
@@ -955,7 +970,9 @@ function buildTrackList() {
       <span class="track-title">${t.title}</span>
       <img src="${isLiked(i)?'img/star.png':'img/star2.png'}" class="like-star" alt="звезда" title="${isLiked(i)?'Убрать из понравившихся':'Добавить в понравившиеся'}" onclick="toggleLike(${i}, event)"/>
     </div>`;
-    if (i===currentTrack) html += `<div class="lyrics-player-block" id="lyricsplayerblock"></div>`;
+    if (i===currentTrack && !document.getElementById('lyricsplayerblock')) {
+      html += `<div class="lyrics-player-block" id="lyricsplayerblock"></div>`;
+    }
   }
   list.innerHTML = html;
   if (favoritesFilterActive) {
@@ -1032,6 +1049,11 @@ function pickAndPlayTrack(n){ showTrack(n, true); autoPlayEnabled = true; }
 function showTrack(n, doPlay) {
   stopAndCleanupAudio(getCurrentAudio());
   __currentAudio = null;
+
+  // Если плеер был вынесен в now-playing — очищаем контейнер
+  const holder = document.getElementById('now-playing');
+  if (holder) holder.innerHTML = '';
+
   currentTrack = n;
   buildTrackList();
   const audio = document.getElementById('audio');
@@ -1147,16 +1169,37 @@ function saveLyricsViewMode() { try { localStorage.setItem('lyricsViewMode', lyr
 restoreLyricsViewMode();
 
 function renderLyrics(time) {
-  if (!currentLyrics || !currentLyrics.length) { const el=document.getElementById('lyrics'); if (el) el.innerHTML=''; return; }
-  let active=0; for (let i=0;i<currentLyrics.length;i++){ if (time>=currentLyrics[i].time) active=i; }
-  const windowSize = 5, start = Math.max(0, active-2); const padTop = Math.max(0, 2-active);
-  const rows=[];
-  for (let p=0;p<padTop;p++) rows.push('<div class="lyrics-window-line"></div>');
-  for (let i=start;i<Math.min(currentLyrics.length, start+windowSize-padTop);i++){
-    const cls = (i===active)?'lyrics-window-line active':'lyrics-window-line';
-    rows.push(`<div class="${cls}">${currentLyrics[i]?currentLyrics[i].line:''}</div>`);
+  if (!currentLyrics || !currentLyrics.length) {
+    const el = document.getElementById('lyrics');
+    if (el) el.innerHTML = '';
+    return;
   }
-  while (rows.length<windowSize) rows.push('<div class="lyrics-window-line"></div>');
+  // Размер окна: normal = 5 строк, expanded = 9 строк
+  const windowSize = (lyricsViewMode === 'expanded') ? 9 : 5;
+  const centerLine = Math.floor(windowSize / 2);
+
+  // Определяем активную строку по времени
+  let active = 0;
+  for (let i = 0; i < currentLyrics.length; i++) {
+    if (time >= currentLyrics[i].time) active = i;
+  }
+
+  const start = Math.max(0, active - centerLine);
+  const padTop = Math.max(0, centerLine - active);
+  const rows = [];
+
+  // Пустые строки сверху (когда активная близко к началу)
+  for (let p = 0; p < padTop; ++p) rows.push('<div class="lyrics-window-line"></div>');
+
+  // Основные строки
+  for (let i = start; i < Math.min(currentLyrics.length, start + windowSize - padTop); i++) {
+    const cls = (i === active) ? 'lyrics-window-line active' : 'lyrics-window-line';
+    rows.push(`<div class="${cls}">${currentLyrics[i] ? currentLyrics[i].line : ''}</div>`);
+  }
+
+  // Пустые строки снизу до полного окна
+  while (rows.length < windowSize) rows.push('<div class="lyrics-window-line"></div>');
+
   const lyricsEl = document.getElementById('lyrics');
   if (lyricsEl) lyricsEl.innerHTML = rows.join('');
 }
@@ -1302,14 +1345,8 @@ function onVolumeSliderChange(e) {
 function updateVolumeUI(volume){
   const percent = Math.max(0, Math.min(100, Math.round(volume * 100)));
   const vf = document.getElementById('volume-fill');
-  const track = document.querySelector('.volume-track');
-  if (vf && track) {
-    const rect = track.getBoundingClientRect();
-    const trackWidth = rect.width;
-    const thumbRadius = 10; // половина 20px
-    // ширина до центра «кружка», но не больше самой дорожки
-    const fillPx = Math.min(trackWidth, Math.max(0, (percent/100) * trackWidth + thumbRadius));
-    vf.style.width = `${fillPx}px`;
+  if (vf) {
+    vf.style.width = `${percent}%`;
   }
 }
 function toggleMute() {
