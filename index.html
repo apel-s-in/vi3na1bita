@@ -979,7 +979,14 @@ function buildTrackList() {
     list.classList.add('filtered');
     updateFavoriteClasses();
   }
-  if (currentTrack>=0) renderLyricsBlock();
+
+  // ВАЖНО: если плеер сохранён во внешнем контейнере (#now-playing), НЕ перерисовываем его
+  const lp = document.getElementById('lyricsplayerblock');
+  const preserved = lp && lp.parentElement && lp.parentElement.id === 'now-playing';
+
+  if (!preserved && currentTrack >= 0) {
+    renderLyricsBlock();
+  }
 }
 
 function toggleLike(idx, e) {
@@ -1047,28 +1054,46 @@ function stopAndCleanupAudio(a) {
 function pickAndPlayTrack(n){ showTrack(n, true); autoPlayEnabled = true; }
 
 function showTrack(n, doPlay) {
+  // Останавливаем ТОЛЬКО текущий audio-элемент (если он есть)
   stopAndCleanupAudio(getCurrentAudio());
   __currentAudio = null;
 
-  // Если плеер был вынесен в now-playing — очищаем контейнер
+  // Если есть внешний контейнер now-playing — очищаем его (устраняем старый UI)
   const holder = document.getElementById('now-playing');
-  if (holder) holder.innerHTML = '';
+  if (holder && holder.firstChild) {
+    holder.innerHTML = '';
+  }
 
   currentTrack = n;
   buildTrackList();
+
   const audio = document.getElementById('audio');
-  if (audio) {
-    __currentAudio = audio;
-    try {
-      audio.muted = false;
-      const saved = parseFloat(localStorage.getItem('playerVolume'));
-      audio.volume = Number.isFinite(saved) && saved > 0 ? saved : 1;
-    } catch {}
-    if (doPlay) {
-      audio.currentTime = 0;
-      const start = () => { const p = audio.play(); if (p && p.catch) p.catch(()=>{}); };
-      if (isNaN(audio.duration) || !isFinite(audio.duration)) audio.addEventListener('canplay', start, { once: true });
-      else start();
+  if (!audio) return;
+
+  __currentAudio = audio;
+
+  // Восстановление громкости
+  try {
+    audio.muted = false;
+    const saved = parseFloat(localStorage.getItem('playerVolume'));
+    audio.volume = Number.isFinite(saved) && saved > 0 ? saved : 1;
+  } catch {}
+
+  if (doPlay) {
+    audio.currentTime = 0;
+
+    const tryPlay = () => {
+      const p = audio.play();
+      if (p && p.catch) p.catch(()=>{});
+    };
+
+    // Если метаданные ещё не готовы — ждём canplay
+    if (isNaN(audio.duration) || !isFinite(audio.duration)) {
+      audio.addEventListener('canplay', tryPlay, { once: true });
+      // Fallback: повторная попытка через 200 мс
+      setTimeout(tryPlay, 200);
+    } else {
+      tryPlay();
     }
   }
 }
@@ -1379,18 +1404,58 @@ function toggleRepeat(){ repeatMode = !repeatMode; const btn=document.getElement
 function toggleShuffle(){ shuffleMode=!shuffleMode; const btn=document.getElementById('shuffle-btn'); if (shuffleMode){ btn.classList.add('active'); createShuffledPlaylist(); NotificationSystem.info('🔀 Случайный порядок'); } else { btn.classList.remove('active'); NotificationSystem.info('Последовательно'); } localStorage.setItem('shuffleMode', shuffleMode?'1':'0'); }
 function toggleFavoritesOnly(){
   const liked = getLiked();
-  if (!liked.length){ NotificationSystem.warning('Нет избранных треков!'); return; }
-  favoritesOnlyMode = !favoritesOnlyMode;
-  const btn = document.getElementById('favorites-btn'), icon = document.getElementById('favorites-btn-icon');
-  if (favoritesOnlyMode){
-    btn.classList.add('favorites-active'); if (icon) icon.src='img/star.png'; updateAvailableTracks(); NotificationSystem.success(`⭐ Только избранные (${liked.length})`);
-    if (!isLiked(currentTrack)){ const n=getNextFavoriteTrack(); if (n!==-1) showTrack(n,true); }
-  } else {
-    btn.classList.remove('favorites-active'); if (icon) icon.src='img/star2.png'; updateAvailableTracks(); NotificationSystem.info('Играют все треки');
+  if (!liked.length) {
+    NotificationSystem.warning('Нет избранных треков!');
+    return;
   }
-  if (shuffleMode) createShuffledPlaylist();
-  localStorage.setItem('favoritesOnlyMode', favoritesOnlyMode?'1':'0');
+
+  favoritesOnlyMode = !favoritesOnlyMode;
+  const btn = document.getElementById('favorites-btn');
+  const icon = document.getElementById('favorites-btn-icon');
+  const filterBtn = document.getElementById('filter-favorites-btn');
+  const list = document.getElementById('track-list');
+
+  if (favoritesOnlyMode) {
+    // Включаем режим: и плеер, и список — только избранные
+    btn && btn.classList.add('favorites-active');
+    if (icon) icon.src = 'img/star.png';
+
+    favoritesFilterActive = true;
+    filterBtn && filterBtn.classList.add('filtered');
+    if (filterBtn) filterBtn.textContent = 'ПОКАЗАТЬ ВСЕ ПЕСНИ';
+    list && list.classList.add('filtered');
+    updateFavoriteClasses();
+
+    updateAvailableTracks();
+    NotificationSystem.success(`⭐ Только избранные (${liked.length})`);
+
+    // Если текущий не входит в избранные — переключаемся на первый избранный
+    if (!isLiked(currentTrack)) {
+      const n = getNextFavoriteTrack();
+      if (n !== -1) showTrack(n, true);
+    }
+
+    // Перестроим Shuffle-лист
+    if (shuffleMode) createShuffledPlaylist();
+  } else {
+    // Выключаем режим: показываем все песни и играем все
+    btn && btn.classList.remove('favorites-active');
+    if (icon) icon.src = 'img/star2.png';
+
+    favoritesFilterActive = false;
+    filterBtn && filterBtn.classList.remove('filtered');
+    if (filterBtn) filterBtn.textContent = 'Скрыть не отмеченные ⭐ песни';
+    list && list.classList.remove('filtered');
+
+    updateAvailableTracks();
+    NotificationSystem.info('Играют все треки');
+
+    if (shuffleMode) createShuffledPlaylist();
+  }
+
+  localStorage.setItem('favoritesOnlyMode', favoritesOnlyMode ? '1' : '0');
 }
+
 function updateAvailableTracks(){ availableTracks = favoritesOnlyMode ? getLiked() : Array.from({length:config.tracks.length},(_,i)=>i); }
 function getNextFavoriteTrack(){ const liked=getLiked(); if (!liked.length) return -1; const pos=liked.indexOf(currentTrack); return pos!==-1 && pos<liked.length-1 ? liked[pos+1] : liked[0]; }
 
@@ -1403,21 +1468,70 @@ function previousTrack(){
   else { const prev = currentTrack>0 ? currentTrack-1 : config.tracks.length-1; showTrack(prev,true); }
 }
 function nextTrack(){
-  if (repeatMode){ const a=document.getElementById('audio'); a.currentTime=0; a.play(); return; }
+  if (repeatMode) {
+    const a = document.getElementById('audio');
+    if (a) { a.currentTime = 0; a.play().catch(()=>{}); }
+    return;
+  }
+
   updateAvailableTracks();
-  if (!availableTracks.length) return NotificationSystem.warning('Нет доступных треков');
-  if (shuffleMode){ shuffleIndex++; if (shuffleIndex>=shuffledPlaylist.length){ createShuffledPlaylist(); shuffleIndex=0; } showTrack(shuffledPlaylist[shuffleIndex], true); }
-  else if (favoritesOnlyMode){ const idx=availableTracks.indexOf(currentTrack); const next = availableTracks[(idx+1)%availableTracks.length]; showTrack(next,true); }
-  else { const n = (currentTrack+1)%config.tracks.length; showTrack(n,true); }
+  if (!availableTracks.length) {
+    NotificationSystem.warning('Нет доступных треков');
+    return;
+  }
+
+  if (shuffleMode) {
+    // Без остановок и без повтора текущей, если треков больше одного
+    if (!Array.isArray(shuffledPlaylist) || shuffledPlaylist.length === 0) {
+      createShuffledPlaylist();
+    }
+    shuffleIndex++;
+    if (shuffleIndex >= shuffledPlaylist.length) {
+      createShuffledPlaylist();
+      shuffleIndex = 0;
+    }
+    let candidate = shuffledPlaylist[shuffleIndex];
+
+    // Страховка: не выбирать текущий, если есть выбор
+    if (availableTracks.length > 1 && candidate === currentTrack) {
+      shuffleIndex = (shuffleIndex + 1) % shuffledPlaylist.length;
+      candidate = shuffledPlaylist[shuffleIndex];
+    }
+    showTrack(candidate, true);
+    return;
+  }
+
+  if (favoritesOnlyMode) {
+    // Крутим только избранные по кругу
+    const idx = availableTracks.indexOf(currentTrack);
+    const next = availableTracks[(idx + 1 + availableTracks.length) % availableTracks.length];
+    showTrack(next, true);
+    return;
+  }
+
+  // Обычный альбом по кругу
+  const n = (currentTrack + 1) % config.tracks.length;
+  showTrack(n, true);
 }
 function createShuffledPlaylist(){
   updateAvailableTracks();
   shuffledPlaylist = [...availableTracks];
+
+  // Убираем текущий из массива, чтобы следующий точно отличался (если треков > 1)
   const i = shuffledPlaylist.indexOf(currentTrack);
-  if (i!==-1) shuffledPlaylist.splice(i,1);
-  for (let j=shuffledPlaylist.length-1;j>0;j--){ const k=Math.floor(Math.random()*(j+1)); [shuffledPlaylist[j],shuffledPlaylist[k]]=[shuffledPlaylist[k],shuffledPlaylist[j]]; }
+  if (i !== -1) shuffledPlaylist.splice(i, 1);
+
+  // Перемешиваем «хвост»
+  for (let j = shuffledPlaylist.length - 1; j > 0; j--) {
+    const k = Math.floor(Math.random() * (j + 1));
+    [shuffledPlaylist[j], shuffledPlaylist[k]] = [shuffledPlaylist[k], shuffledPlaylist[j]];
+  }
+
+  // Ставим текущий в начало для правильного next
   if (availableTracks.includes(currentTrack)) shuffledPlaylist.unshift(currentTrack);
-  shuffleIndex=0;
+
+  // Если всего один трек доступен — остаёмся на позиции 0
+  shuffleIndex = shuffledPlaylist.length > 1 ? 0 : 0;
 }
 
 /* ====== Prefetch следующего трека (как в старом, адаптировано) ====== */
