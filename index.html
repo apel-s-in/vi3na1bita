@@ -734,10 +734,14 @@ function initializeMainUi() {
       } catch {}
 
       await loadAlbumByKey(sel.value);
-
+      
       const st = PlayerState.restore();
       if (st && st.album && albumByKey(st.album)) {
-        sel.value = st.album;
+        // Если сохранённый альбом отличается — реально загружаем его конфиг
+        if (sel.value !== st.album) {
+          sel.value = st.album;
+          await loadAlbumByKey(st.album);
+        }
       }
       if (st && Number.isInteger(st.trackIndex) && st.trackIndex >= 0 && st.trackIndex < (config.tracks || []).length) {
         showTrack(st.trackIndex, false);
@@ -745,9 +749,11 @@ function initializeMainUi() {
           const a = document.getElementById('audio');
           if (a) {
             a.currentTime = st.position || 0;
-            a.volume = st.volume || a.volume;
+            a.volume = (typeof st.volume === 'number') ? st.volume : a.volume;
           }
           applyLyricsViewMode();
+          // Сразу зафиксируем восстановленное состояние
+          PlayerState.save();
         }, 300);
       }
     }
@@ -883,10 +889,59 @@ class NotificationSystem {
   static offline(msg){ this.show(msg,'offline'); }
 }
 
-/* ====== Избранное ====== */
-function getLiked(){ try{ return JSON.parse(localStorage.getItem('likedTracks')||'[]'); }catch{ return []; } }
-function saveLiked(arr){ localStorage.setItem('likedTracks', JSON.stringify(arr)); }
-function isLiked(idx){ return getLiked().includes(idx); }
+/* ====== Избранное (помесячно по альбомам, v2) ====== */
+const LIKED_STORAGE_KEY_V2 = 'likedTracks:v2';
+
+/* Получаем карту { albumKey: number[] } */
+function getLikedMap() {
+  try {
+    const raw = localStorage.getItem(LIKED_STORAGE_KEY_V2);
+    const map = raw ? JSON.parse(raw) : {};
+    return (map && typeof map === 'object') ? map : {};
+  } catch {
+    return {};
+  }
+}
+
+/* Миграция со старого формата (глобальный массив) в карту для текущего альбома */
+function migrateLegacyLikedIfNeeded(map) {
+  try {
+    const legacyRaw = localStorage.getItem('likedTracks');
+    if (!legacyRaw) return map;
+    const legacy = JSON.parse(legacyRaw);
+    if (Array.isArray(legacy) && currentAlbumKey) {
+      if (!Array.isArray(map[currentAlbumKey]) || map[currentAlbumKey].length === 0) {
+        map[currentAlbumKey] = legacy.slice();
+      }
+    }
+    // Старый ключ больше не нужен
+    localStorage.removeItem('likedTracks');
+    localStorage.setItem(LIKED_STORAGE_KEY_V2, JSON.stringify(map));
+  } catch {}
+  return map;
+}
+
+/* Список избранных по текущему альбому */
+function getLiked() {
+  let map = getLikedMap();
+  map = migrateLegacyLikedIfNeeded(map);
+  if (!currentAlbumKey) return [];
+  const arr = map[currentAlbumKey];
+  return Array.isArray(arr) ? arr : [];
+}
+
+/* Сохранить избранные по текущему альбому */
+function saveLiked(arr) {
+  if (!currentAlbumKey) return;
+  const map = getLikedMap();
+  map[currentAlbumKey] = Array.from(new Set(arr.filter(n => Number.isInteger(n))));
+  localStorage.setItem(LIKED_STORAGE_KEY_V2, JSON.stringify(map));
+}
+
+/* Проверка «в избранном» для текущего альбома */
+function isLiked(idx) {
+  return getLiked().includes(idx);
+}
 
 /* ====== Треки (список) ====== */
 function buildTrackList() {
@@ -1024,7 +1079,11 @@ function renderLyricsBlock() {
         <button class="player-control-btn bit-btn${bitEnabled?' bit-active':''}" id="bit-btn" onclick="toggleBit()" title="Пульсация логотипа (B)" aria-label="Пульсация">B</button>
         <button class="player-control-btn${repeatMode?' repeat-active':''}" id="repeat-btn" onclick="toggleRepeat()" title="Повтор трека (R)" aria-label="Повтор"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg></button>
         <button class="sleep-timer-btn" id="sleep-timer-btn" onclick="toggleSleepMenu()" title="Таймер сна (T)" aria-label="Таймер сна">
-          <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm.5 5H11v6l5.2 3.2.8-1.3-4.5-2.7V7z"/></svg>
+          <!-- Часики: круг + стрелки -->
+          <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"></circle>
+            <path d="M12 7v5l3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
           <span class="sleep-timer-badge" id="sleep-timer-badge" style="display:none;">0</span>
           <div class="sleep-menu" id="sleep-menu">
             <div class="sleep-menu-item" onclick="setSleepTimer('off')">Выключить</div>
@@ -1053,6 +1112,16 @@ function renderLyricsBlock() {
   if (__currentAudio && __currentAudio !== audioEl) stopAndCleanupAudio(__currentAudio);
   __currentAudio = audioEl;
   audioEl.src = tr.audio;
+
+  // Если режим пульсации активен, перепривязываем источник и перезапускаем анимацию
+  if (bitEnabled) {
+    try {
+      initAudioContext();
+      startLogoPulsation();
+    } catch(e) {
+      // не ломаем проигрывание при ошибке
+    }
+  }
 
   loadLyrics(tr.lyrics);
   setupMediaSession();
@@ -1196,6 +1265,8 @@ function onAudioTimeUpdate(e) {
     const remainingEl = document.getElementById('time-remaining');
     if (elapsedEl) elapsedEl.textContent = formatTime(currentTime);
     if (remainingEl) remainingEl.textContent = formatTime(Math.max(0, duration - currentTime));
+    // Раз в секунду сохраняем прогресс прослушивания
+    try { PlayerState.save(); } catch {}
   }
   updatePlayPauseIcon();
 }
@@ -1228,7 +1299,19 @@ function onVolumeSliderChange(e) {
   updateVolumeUI(value);
   try { localStorage.setItem('playerVolume', value); } catch {}
 }
-function updateVolumeUI(volume){ const vf=document.getElementById('volume-fill'); if (vf) vf.style.width = `${Math.round(volume*100)}%`; }
+function updateVolumeUI(volume){
+  const percent = Math.max(0, Math.min(100, Math.round(volume * 100)));
+  const vf = document.getElementById('volume-fill');
+  const track = document.querySelector('.volume-track');
+  if (vf && track) {
+    const rect = track.getBoundingClientRect();
+    const trackWidth = rect.width;
+    const thumbRadius = 10; // половина 20px
+    // ширина до центра «кружка», но не больше самой дорожки
+    const fillPx = Math.min(trackWidth, Math.max(0, (percent/100) * trackWidth + thumbRadius));
+    vf.style.width = `${fillPx}px`;
+  }
+}
 function toggleMute() {
   const audio = document.getElementById('audio');
   if (!audio) return;
@@ -1696,11 +1779,32 @@ function toggleBit(){
   localStorage.setItem('bitEnabled', bitEnabled?'1':'0');
 }
 function initAudioContext(){
-  if (!audioContext) { const AC = window.AudioContext||window.webkitAudioContext; audioContext = new AC(); }
-  analyser = audioContext.createAnalyser(); analyser.fftSize=256; analyser.smoothingTimeConstant=.8;
-  const a=document.getElementById('audio'); if (!a) return;
-  if (!audioSource){ audioSource = audioContext.createMediaElementSource(a); audioSource.connect(analyser); analyser.connect(audioContext.destination); }
-  if (audioContext.state==='suspended') audioContext.resume();
+  // 1) Контекст
+  if (!audioContext) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    audioContext = new AC();
+  }
+  if (audioContext.state === 'suspended') {
+    audioContext.resume().catch(()=>{});
+  }
+
+  // 2) Анализатор (создаём один раз и держим)
+  if (!analyser) {
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.8;
+  }
+
+  // 3) Источник всегда перепривязываем к текущему audio-элементу
+  const a = document.getElementById('audio');
+  if (!a) return;
+
+  try { if (audioSource) audioSource.disconnect(); } catch(e) {}
+  try { if (analyser) analyser.disconnect(); } catch(e) {}
+
+  audioSource = audioContext.createMediaElementSource(a);
+  audioSource.connect(analyser);
+  analyser.connect(audioContext.destination);
 }
 function startLogoPulsation(){
   if (!bitEnabled || !analyser) return; const logo=document.getElementById('logo-bottom'); if (!logo) return;
