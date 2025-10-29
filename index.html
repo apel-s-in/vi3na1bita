@@ -1905,12 +1905,6 @@ function toggleLikePlayingFromMini(e) {
   updateMiniNowHeader();
   updateNextUpLabel();
 }
-function toggleLikePlayingFromMini(e) {
-  if (e && e.stopPropagation) e.stopPropagation();
-  toggleLikePlaying();
-  updateMiniNowHeader();
-  updateNextUpLabel();
-}
 
 function attachPlaybackStateListeners() {
   const a = document.getElementById('audio');
