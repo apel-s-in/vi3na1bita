@@ -1300,6 +1300,9 @@ function renderLyricsBlock() {
   __currentAudio = audioEl;
   audioEl.src = tr.audio;
 
+  // Обновляем playbackState для Media Session (экраны блокировки/гарнитуры)
+  attachPlaybackStateListeners();
+
   if (bitEnabled) {
     try { initAudioContext(); startLogoPulsation(); } catch(e) {}
   }
@@ -1802,13 +1805,23 @@ function playFromPlaybackAlbum(idx, doPlay) {
 
 function setupMediaSessionForPlayback() {
   if (!('mediaSession' in navigator) || !playingTracks) return;
-  const tr = playingTracks[currentTrack];
+  const tr = playingTracks[playingTrack];
+  if (!tr) return;
+
   navigator.mediaSession.metadata = new MediaMetadata({
     title: tr.title,
     artist: playingArtist || 'Витрина Разбита',
     album: playingAlbumName || 'Альбом',
     artwork: [{ src: playingCover || 'img/logo.png', sizes: '512x512', type: 'image/png' }]
   });
+
+  navigator.mediaSession.setActionHandler('play',  ()=>{ const a=document.getElementById('audio'); a&&a.play(); updatePlayPauseIcon(); });
+  navigator.mediaSession.setActionHandler('pause', ()=>{ const a=document.getElementById('audio'); a&&a.pause(); updatePlayPauseIcon(); });
+  navigator.mediaSession.setActionHandler('previoustrack', previousTrack);
+  navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
+  navigator.mediaSession.setActionHandler('seekbackward', ()=>{ const a=document.getElementById('audio'); if (a) a.currentTime=Math.max(0,(a.currentTime||0)-10); });
+  navigator.mediaSession.setActionHandler('seekforward', ()=>{ const a=document.getElementById('audio'); if (a) a.currentTime=Math.min(a.duration,(a.currentTime||0)+10); });
+  navigator.mediaSession.setActionHandler('seekto', (details)=>{ const a=document.getElementById('audio'); if (a && typeof details.seekTime==='number') a.currentTime = details.seekTime; });
 }
 
 function computeNextIndexPlayback() {
@@ -1892,6 +1905,19 @@ function toggleLikePlayingFromMini(e) {
   updateMiniNowHeader();
   updateNextUpLabel();
 }
+function toggleLikePlayingFromMini(e) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  toggleLikePlaying();
+  updateMiniNowHeader();
+  updateNextUpLabel();
+}
+
+function attachPlaybackStateListeners() {
+  const a = document.getElementById('audio');
+  if (!a || !('mediaSession' in navigator)) return;
+  a.addEventListener('play',  () => { try { navigator.mediaSession.playbackState = 'playing'; } catch {} });
+  a.addEventListener('pause', () => { try { navigator.mediaSession.playbackState = 'paused';  } catch {} });
+}
 
 /* ====== Prefetch следующего трека (как в старом, адаптировано) ====== */
 function computeNextTrackIndexCandidate() {
@@ -1952,18 +1978,21 @@ function setupMediaSession(){
   const pc = getPlayerConfig();
   const tr = pc?.tracks?.[playingTrack];
   if (!tr) return;
+
   navigator.mediaSession.metadata = new MediaMetadata({
     title: tr.title,
     artist: pc.artist || 'Витрина Разбита',
     album: pc.albumName || 'Альбом',
     artwork: [{ src: (playingCover || 'img/logo.png'), sizes: '512x512', type: 'image/png' }]
   });
-  navigator.mediaSession.setActionHandler('play', ()=>{ const a=document.getElementById('audio'); a&&a.play(); updatePlayPauseIcon(); });
+
+  navigator.mediaSession.setActionHandler('play',  ()=>{ const a=document.getElementById('audio'); a&&a.play(); updatePlayPauseIcon(); });
   navigator.mediaSession.setActionHandler('pause', ()=>{ const a=document.getElementById('audio'); a&&a.pause(); updatePlayPauseIcon(); });
   navigator.mediaSession.setActionHandler('previoustrack', previousTrack);
   navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
   navigator.mediaSession.setActionHandler('seekbackward', ()=>{ const a=document.getElementById('audio'); if (a) a.currentTime=Math.max(0,(a.currentTime||0)-10); });
   navigator.mediaSession.setActionHandler('seekforward', ()=>{ const a=document.getElementById('audio'); if (a) a.currentTime=Math.min(a.duration,(a.currentTime||0)+10); });
+  navigator.mediaSession.setActionHandler('seekto', (details)=>{ const a=document.getElementById('audio'); if (a && typeof details.seekTime==='number') a.currentTime = details.seekTime; });
 }
 
 /* ====== Время ====== */
