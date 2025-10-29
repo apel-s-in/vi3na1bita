@@ -1,23 +1,23 @@
 /* service-worker.js — Витрина Разбита PWA
    Совместим с новым index.html: поддерживает OFFLINE режим, кеширование альбомов и командные сообщения
 */
-const VERSION = '7.2.1';
+const VERSION = '7.2.2';
 const CORE_CACHE = `core-v${VERSION}`;
 const ALBUM_CACHE = 'album-offline-v1';
 
 /* Базовые оффлайн‑ресурсы приложения (корневые, без альбомов) */
 const CORE_ASSETS = [
-  '/',                 // навигация
-  '/index.html',
-  '/manifest.json',
-  '/albums.json',
-  '/img/logo.png',
-  '/img/star.png',
-  '/img/star2.png',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/icon-192-maskable.png',
-  '/icons/icon-512-maskable.png'
+  './',
+  './index.html',
+  './manifest.json',
+  './albums.json',
+  './img/logo.png',
+  './img/star.png',
+  './img/star2.png',
+  './icons/icon-192.png',
+  './icons/icon-512.png',
+  './icons/icon-192-maskable.png',
+  './icons/icon-512-maskable.png'
 ];
 
 /* Флаг принудительного cache-first режима (кнопка OFFLINE в UI) */
@@ -92,18 +92,19 @@ self.addEventListener('fetch', (event) => {
   // Навигационные запросы (страницы)
   if (req.mode === 'navigate') {
     event.respondWith((async () => {
-      // Сначала сеть, затем кэш
       try {
         const res = await safeFetch(req, { timeout: 8000, cachePut: CORE_CACHE });
         if (res && res.ok) return res;
         throw new Error('network failed');
       } catch {
         const cache = await caches.open(CORE_CACHE);
-        const cached = await cache.match('/index.html');
+        const INDEX_URL = new URL('index.html', self.registration.scope).toString();
+        const cached = await cache.match(INDEX_URL);
         if (cached) return cached;
-        // Последний шанс — любой закэшированный index
+
         const keys = await cache.keys();
-        const fallback = await cache.match(keys.find(k => new URL(k.url).pathname.endsWith('/index.html')) || '/index.html');
+        const fallbackKey = keys.find(k => k.url === INDEX_URL)?.url || INDEX_URL;
+        const fallback = await cache.match(fallbackKey);
         return fallback || Response.error();
       }
     })());
