@@ -318,6 +318,13 @@
     .mini-mode .next-up { display: block; }
     .next-up .label { color: #8ab8fd; opacity: .9; margin-right: 6px; }
     .next-up .title { color: var(--primary-color); font-weight: 700; }
+    /* Мини‑шапка с текущим треком в мини‑плеере */
+    .mini-now { display: none; align-items: center; padding: 6px 8px; margin: 0 0 6px 0;
+      background: #0f2a3a; border-radius: 8px; border: 1px solid var(--border-color); }
+    .mini-mode .mini-now { display: flex; }
+    .mini-now .tnum { min-width: 27px; color: #8ab8fd; }
+    .mini-now .track-title { margin-left: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    .mini-now .like-star { margin-left: auto; width: 19px; height: 19px; cursor: pointer; opacity: .97; } 
   </style>
 </head>
 <body>
@@ -712,7 +719,9 @@ async function loadAlbumConfig(base) {
     // Перестраиваем список треков нового альбома (без сброса currentTrack)
     buildTrackList();
     updateAvailableTracks();
-    applyMiniModeUI(); // свернуть/развернуть плеер в зависимости от того, чей альбом смотрим
+    applyMiniModeUI(); // свернуть/развернуть плеер
+    updateNextUpLabel(); // показать "Следующая" сразу
+    updateMiniNowHeader(); // и мини‑шапку сразу
 
     parseDeepLink();
   } catch(e) {
@@ -1130,6 +1139,9 @@ function toggleLikePlaying() {
     // актуализируем «играющий» shuffle
     if (shuffleMode) createPlayingShuffledPlaylist();
   }
+
+  updateMiniNowHeader();
+  updateNextUpLabel();
 }
 
 function updateFavoriteClasses() {
@@ -1199,13 +1211,10 @@ function showTrack(n, doPlay) {
 
   if (doPlay) {
     audio.currentTime = 0;
-
     const tryPlay = () => {
       const p = audio.play();
       if (p && p.catch) p.catch(()=>{});
     };
-
-    // Если метаданные ещё не готовы — ждём canplay
     if (isNaN(audio.duration) || !isFinite(audio.duration)) {
       audio.addEventListener('canplay', tryPlay, { once: true });
       setTimeout(tryPlay, 200);
@@ -1213,12 +1222,23 @@ function showTrack(n, doPlay) {
       tryPlay();
     }
   }
+
+  applyMiniModeUI();
+  updateMiniNowHeader();
+  updateNextUpLabel();
 }
 
 function renderLyricsBlock() {
   const block = document.getElementById('lyricsplayerblock') || document.getElementById('now-playing');
   if (!block) return;
   block.innerHTML = `
+    <div class="mini-now" id="mini-now">
+      <span class="tnum" id="mini-now-num">--.</span>
+      <span class="track-title" id="mini-now-title">—</span>
+      <img src="img/star2.png" class="like-star" id="mini-now-star"
+           alt="звезда" title="Добавить в понравившиеся"
+           onclick="toggleLikePlayingFromMini(event)"/>
+    </div>
     <div id="lyrics-window" class="lyrics-normal">
       <div class="lyrics-animated-bg${animationEnabled ? ' active' : ''}"></div>
       <div class="lyrics-scroll" id="lyrics"></div>
@@ -1297,6 +1317,7 @@ function renderLyricsBlock() {
 
   applyMiniModeUI();
   updateNextUpLabel();
+  updateMiniNowHeader();
 }
 
 /* ====== Лирика ====== */
@@ -1776,6 +1797,7 @@ function playFromPlaybackAlbum(idx, doPlay) {
 
   applyMiniModeUI();
   updateNextUpLabel();
+  updateMiniNowHeader();
 }
 
 function setupMediaSessionForPlayback() {
@@ -1829,6 +1851,37 @@ function applyMiniModeUI() {
   const lp = document.getElementById('lyricsplayerblock');
   if (!lp) return;
   if (isBrowsingOtherAlbum()) lp.classList.add('mini-mode'); else lp.classList.remove('mini-mode');
+  // сразу синхронизируем подписи
+  updateMiniNowHeader();
+  updateNextUpLabel();
+}
+
+function updateMiniNowHeader() {
+  const box = document.getElementById('mini-now');
+  if (!box) return;
+  const show = isBrowsingOtherAlbum() && Array.isArray(playingTracks) && playingTracks.length > 0 && playingTrack >= 0;
+  if (!show) { box.style.display = 'none'; return; }
+
+  // Заполним контент
+  const numEl = document.getElementById('mini-now-num');
+  const titleEl = document.getElementById('mini-now-title');
+  const starEl = document.getElementById('mini-now-star');
+
+  numEl.textContent = `${String(playingTrack + 1).padStart(2, '0')}.`;
+  titleEl.textContent = playingTracks[playingTrack]?.title || '—';
+
+  const liked = isLikedInPlayback(playingTrack);
+  if (starEl) {
+    starEl.src = liked ? 'img/star.png' : 'img/star2.png';
+    starEl.title = liked ? 'Убрать из понравившихся' : 'Добавить в понравившиеся';
+  }
+}
+
+function toggleLikePlayingFromMini(e) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  toggleLikePlaying();
+  updateMiniNowHeader();
+  updateNextUpLabel();
 }
 
 /* ====== Prefetch следующего трека (как в старом, адаптировано) ====== */
@@ -1958,14 +2011,15 @@ function closeFeedbackModal(){ document.getElementById('modal-feedback').classLi
 
 /* ====== Deep Link ====== */
 function parseDeepLink(){
-  const params=new URLSearchParams(location.search);
+  const params = new URLSearchParams(location.search);
   const albumParam = params.get('album');
-  if (albumParam && albumByKey(albumParam)) {
+  if (albumParam && albumByKey(albumParam) && albumParam !== currentAlbumKey) {
     const sel = document.getElementById('album-select');
     sel.value = albumParam;
     loadAlbumByKey(albumParam);
+    return; // дождёмся загрузки; parseDeepLink вызовется из loadAlbumConfig ещё раз
   }
-  const t=params.get('track');
+  const t = params.get('track');
   if (t && config){
     const idx=parseInt(t,10);
     if (!isNaN(idx) && idx>=0 && idx<config.tracks.length){
