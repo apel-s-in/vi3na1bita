@@ -2083,6 +2083,19 @@ function copyLinkCurrentTrack(){
   }
   closeDownloadModal();
 }
+function closeDownloadModal(){
+  const m = document.getElementById('download-modal');
+  if (m) m.classList.remove('active');
+}
+
+function openInAppCurrentTrack(){
+  const pc = getPlayerConfig();
+  const tr = pc?.tracks?.[playingTrack];
+  if (!tr) return;
+  // Открываем аудио в внешнем плеере/вкладке
+  window.open(tr.audio, '_blank', 'noopener');
+  closeDownloadModal();
+}
 
 /* ====== Скачивание альбома ====== */
 function loadJSZip(){ if (window.JSZip) return Promise.resolve(); return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
