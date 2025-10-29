@@ -547,6 +547,24 @@ let animationFrame = null;
 let filesToDownload = [];
 let __currentAudio = null;
 
+/* ====== Контекст воспроизведения (отдельно от просматриваемого альбома) ====== */
+let playingAlbumKey = null;
+let playingAlbumBase = '';
+let playingConfig = null;   // снапшот треков и метаданных альбома, который ИДЁТ сейчас
+let playingTrack = -1;      // индекс трека внутри playingConfig
+let playingCovers = [];     // обложки играющего альбома (для Media Session)
+
+function getPlayerConfig() { return playingConfig || null; }
+function getPlayerAlbumKey() { return playingAlbumKey || null; }
+function isBrowsingSameAsPlaying() { return playingAlbumKey && (playingAlbumKey === currentAlbumKey); }
+
+function getLikedForAlbumKey(key) {
+  const map = getLikedMap();
+  return Array.isArray(map[key]) ? map[key] : [];
+}
+function getLikedForPlayback() { return getLikedForAlbumKey(playingAlbumKey); }
+function isLikedInPlayback(idx) { return getLikedForPlayback().includes(idx); }
+
 /* ====== Безопасные URL helper'ы (абсолютное склеивание) ====== */
 function normalizeBase(b) {
   try {
@@ -685,14 +703,14 @@ async function loadAlbumConfig(base) {
   }
 }
 
-/* ====== Сохранение состояния плеера (упрощённо) ====== */
+/* ====== Сохранение состояния плеера (с учётом separate playback) ====== */
 const PlayerState = {
   save() {
     try {
       const a = document.getElementById('audio');
       const data = {
-        album: currentAlbumKey,
-        trackIndex: currentTrack,
+        album: playingAlbumKey,
+        trackIndex: playingTrack,
         position: a ? a.currentTime : 0,
         volume: a ? a.volume : parseFloat(localStorage.getItem('playerVolume')) || 1,
         ts: Date.now()
@@ -963,13 +981,16 @@ function buildTrackList() {
   const list = document.getElementById('track-list');
   if (!config) { list.innerHTML = ''; return; }
 
-  // Плеер уже «сохранён» во внешнем контейнере now-playing?
-  const preservedInNowPlaying = !!document.getElementById('now-playing')?.querySelector('#lyricsplayerblock');
+  // Если сейчас просматриваем НЕ тот альбом, который играет — плеер должен жить в #now-playing
+  const preservedInNowPlaying =
+    !isBrowsingSameAsPlaying() ||
+    !!document.getElementById('now-playing')?.querySelector('#lyricsplayerblock');
 
   let html = '';
   for (let i = 0; i < config.tracks.length; i++) {
     const t = config.tracks[i];
-    html += `<div class="track${i === currentTrack ? ' current' : ''}" id="trk${i}" onclick="pickAndPlayTrack(${i})">
+    const isCurrentVisible = isBrowsingSameAsPlaying() && (i === playingTrack);
+    html += `<div class="track${isCurrentVisible ? ' current' : ''}" id="trk${i}" onclick="pickAndPlayTrack(${i})">
       <span class="tnum">${String(i + 1).padStart(2, '0')}.</span>
       <span class="track-title">${t.title}</span>
       <img src="${isLiked(i) ? 'img/star.png' : 'img/star2.png'}"
@@ -979,8 +1000,8 @@ function buildTrackList() {
            onclick="toggleLike(${i}, event)"/>
     </div>`;
 
-    // Если плеер НЕ сохранён во внешнем контейнере — добавляем placeholder под текущим треком
-    if (i === currentTrack && !preservedInNowPlaying) {
+    // Плейсхолдер для плеера рисуем ТОЛЬКО если играющий альбом совпадает с просматриваемым
+    if (isCurrentVisible && !preservedInNowPlaying) {
       html += `<div class="lyrics-player-block" id="lyricsplayerblock"></div>`;
     }
   }
@@ -992,8 +1013,8 @@ function buildTrackList() {
     updateFavoriteClasses();
   }
 
-  // Если плеер не сохранён в now-playing — отрисовываем блок и инициализируем плеер
-  if (!preservedInNowPlaying && currentTrack >= 0) {
+  // Если плеер должен быть внутри списка и он ещё не сохранён в now-playing — инициализируем блок
+  if (isBrowsingSameAsPlaying() && !preservedInNowPlaying && playingTrack >= 0) {
     renderLyricsBlock();
   }
 }
@@ -1020,13 +1041,45 @@ function toggleLike(idx, e) {
 
   if (favoritesOnlyMode) {
     updateAvailableTracks();
-    if (!isLiked(currentTrack)) {
+    if (!isLiked(currentAlbumKey === playingAlbumKey ? playingTrack : -1)) {
       const nextFavorite = getNextFavoriteTrack();
       if (nextFavorite !== -1) setTimeout(()=>showTrack(nextFavorite, true), 300);
       else {
         toggleFavoritesOnly();
         NotificationSystem.warning('Все треки удалены из избранного');
       }
+    }
+    if (shuffleMode) createShuffledPlaylist();
+  }
+}
+
+/* Лайк/анлайк для текущего ИГРАЮЩЕГО трека, даже если открыт другой альбом */
+function toggleLikePlaying() {
+  if (!playingConfig || playingTrack < 0) return;
+  const map = getLikedMap();
+  const arr = Array.isArray(map[playingAlbumKey]) ? map[playingAlbumKey] : [];
+  const was = arr.includes(playingTrack);
+  const next = was ? arr.filter(x => x !== playingTrack) : [...arr, playingTrack];
+  map[playingAlbumKey] = Array.from(new Set(next));
+  try { localStorage.setItem(LIKED_STORAGE_KEY_V2, JSON.stringify(map)); } catch {}
+
+  // Если просматриваем тот же альбом — обновим звёздочку и классы
+  if (isBrowsingSameAsPlaying()) {
+    const star = document.querySelector(`#trk${playingTrack} .like-star`);
+    if (star) {
+      star.src = was ? 'img/star2.png' : 'img/star.png';
+      star.title = was ? 'Добавить в понравившиеся' : 'Убрать из понравившиеся';
+      star.classList.add('animating'); setTimeout(()=>star.classList.remove('animating'),300);
+    }
+    if (favoritesFilterActive) updateFavoriteClasses();
+  }
+
+  if (favoritesOnlyMode) {
+    updateAvailableTracks();
+    if (!isLikedInPlayback(playingTrack)) {
+      const nextFav = getNextFavoriteTrack();
+      if (nextFav !== -1) showTrack(nextFav, true);
+      else { toggleFavoritesOnly(); NotificationSystem.warning('Все треки удалены из избранного'); }
     }
     if (shuffleMode) createShuffledPlaylist();
   }
@@ -1067,13 +1120,30 @@ function showTrack(n, doPlay) {
   stopAndCleanupAudio(getCurrentAudio());
   __currentAudio = null;
 
+  // Мы начинаем НОВУЮ сессию воспроизведения от текущего "просматриваемого" альбома
+  playingAlbumKey  = currentAlbumKey;
+  playingAlbumBase = albumBase;
+  // Снимем снапшот текущего config, чтобы последующая смена "просмотренного" альбома не ломала очередь
+  try {
+    playingConfig = { ...config, tracks: (config?.tracks || []).map(t => ({ ...t })) };
+  } catch {
+    playingConfig = config;
+  }
+  playingTrack = n;
+  playingCovers = [
+    absJoin(playingAlbumBase, 'Cover.png'),
+    absJoin(playingAlbumBase, 'Cover01.png'),
+    absJoin(playingAlbumBase, 'Cover02.png'),
+    absJoin(playingAlbumBase, 'Cover03.png')
+  ];
+
   // Если есть внешний контейнер now-playing — очищаем его (устраняем старый UI)
   const holder = document.getElementById('now-playing');
   if (holder && holder.firstChild) {
     holder.innerHTML = '';
   }
 
-  currentTrack = n;
+  // Перестраиваем список треков текущего альбома (плеер встанет под нужный трек)
   buildTrackList();
 
   const audio = document.getElementById('audio');
@@ -1099,7 +1169,6 @@ function showTrack(n, doPlay) {
     // Если метаданные ещё не готовы — ждём canplay
     if (isNaN(audio.duration) || !isFinite(audio.duration)) {
       audio.addEventListener('canplay', tryPlay, { once: true });
-      // Fallback: повторная попытка через 200 мс
       setTimeout(tryPlay, 200);
     } else {
       tryPlay();
@@ -1108,7 +1177,7 @@ function showTrack(n, doPlay) {
 }
 
 function renderLyricsBlock() {
-  const block = document.getElementById('lyricsplayerblock');
+  const block = document.getElementById('lyricsplayerblock') || document.getElementById('now-playing');
   if (!block) return;
   block.innerHTML = `
     <div id="lyrics-window" class="lyrics-normal">
@@ -1135,7 +1204,6 @@ function renderLyricsBlock() {
         <button class="player-control-btn bit-btn${bitEnabled?' bit-active':''}" id="bit-btn" onclick="toggleBit()" title="Пульсация логотипа (B)" aria-label="Пульсация">B</button>
         <button class="player-control-btn${repeatMode?' repeat-active':''}" id="repeat-btn" onclick="toggleRepeat()" title="Повтор трека (R)" aria-label="Повтор"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 2l4 4-4 4"/><path d="M3 11V9a4 4 0 014-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg></button>
         <button class="sleep-timer-btn" id="sleep-timer-btn" onclick="toggleSleepMenu()" title="Таймер сна (T)" aria-label="Таймер сна">
-          <!-- Часики: круг + стрелки -->
           <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true">
             <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"></circle>
             <path d="M12 7v5l3 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
@@ -1163,20 +1231,17 @@ function renderLyricsBlock() {
     </div>
   `;
 
-  const tr = config.tracks[currentTrack];
+  const pc = getPlayerConfig();
+  const tr = pc?.tracks?.[playingTrack];
+  if (!tr) return;
+
   const audioEl = document.getElementById('audio');
   if (__currentAudio && __currentAudio !== audioEl) stopAndCleanupAudio(__currentAudio);
   __currentAudio = audioEl;
   audioEl.src = tr.audio;
 
-  // Если режим пульсации активен, перепривязываем источник и перезапускаем анимацию
   if (bitEnabled) {
-    try {
-      initAudioContext();
-      startLogoPulsation();
-    } catch(e) {
-      // не ломаем проигрывание при ошибке
-    }
+    try { initAudioContext(); startLogoPulsation(); } catch(e) {}
   }
 
   loadLyrics(tr.lyrics);
@@ -1412,9 +1477,9 @@ function stopPlayback(){
 function toggleRepeat(){ repeatMode = !repeatMode; const btn=document.getElementById('repeat-btn'); if (repeatMode) btn.classList.add('repeat-active'); else btn.classList.remove('repeat-active'); localStorage.setItem('repeatMode', repeatMode?'1':'0'); }
 function toggleShuffle(){ shuffleMode=!shuffleMode; const btn=document.getElementById('shuffle-btn'); if (shuffleMode){ btn.classList.add('active'); createShuffledPlaylist(); NotificationSystem.info('🔀 Случайный порядок'); } else { btn.classList.remove('active'); NotificationSystem.info('Последовательно'); } localStorage.setItem('shuffleMode', shuffleMode?'1':'0'); }
 function toggleFavoritesOnly(){
-  const liked = getLiked();
+  const liked = getLikedForPlayback();
   if (!liked.length) {
-    NotificationSystem.warning('Нет избранных треков!');
+    NotificationSystem.warning('Нет избранных треков в текущем альбоме воспроизведения!');
     return;
   }
 
@@ -1425,57 +1490,81 @@ function toggleFavoritesOnly(){
   const list = document.getElementById('track-list');
 
   if (favoritesOnlyMode) {
-    // Включаем режим: и плеер, и список — только избранные
     btn && btn.classList.add('favorites-active');
     if (icon) icon.src = 'img/star.png';
 
-    favoritesFilterActive = true;
-    filterBtn && filterBtn.classList.add('filtered');
-    if (filterBtn) filterBtn.textContent = 'ПОКАЗАТЬ ВСЕ ПЕСНИ';
-    list && list.classList.add('filtered');
-    updateFavoriteClasses();
+    // Фильтр списка треков применяем только если просматриваем именно играющий альбом
+    if (isBrowsingSameAsPlaying()) {
+      favoritesFilterActive = true;
+      filterBtn && filterBtn.classList.add('filtered');
+      if (filterBtn) filterBtn.textContent = 'ПОКАЗАТЬ ВСЕ ПЕСНИ';
+      list && list.classList.add('filtered');
+      updateFavoriteClasses();
+    }
 
     updateAvailableTracks();
     NotificationSystem.success(`⭐ Только избранные (${liked.length})`);
 
-    // Если текущий не входит в избранные — переключаемся на первый избранный
-    if (!isLiked(currentTrack)) {
+    if (!isLikedInPlayback(playingTrack)) {
       const n = getNextFavoriteTrack();
       if (n !== -1) showTrack(n, true);
     }
-
-    // Перестроим Shuffle-лист
     if (shuffleMode) createShuffledPlaylist();
   } else {
-    // Выключаем режим: показываем все песни и играем все
     btn && btn.classList.remove('favorites-active');
     if (icon) icon.src = 'img/star2.png';
 
-    favoritesFilterActive = false;
-    filterBtn && filterBtn.classList.remove('filtered');
-    if (filterBtn) filterBtn.textContent = 'Скрыть не отмеченные ⭐ песни';
-    list && list.classList.remove('filtered');
+    if (isBrowsingSameAsPlaying()) {
+      favoritesFilterActive = false;
+      filterBtn && filterBtn.classList.remove('filtered');
+      if (filterBtn) filterBtn.textContent = 'Скрыть не отмеченные ⭐ песни';
+      list && list.classList.remove('filtered');
+    }
 
     updateAvailableTracks();
     NotificationSystem.info('Играют все треки');
-
     if (shuffleMode) createShuffledPlaylist();
   }
 
   localStorage.setItem('favoritesOnlyMode', favoritesOnlyMode ? '1' : '0');
 }
 
-function updateAvailableTracks(){ availableTracks = favoritesOnlyMode ? getLiked() : Array.from({length:config.tracks.length},(_,i)=>i); }
-function getNextFavoriteTrack(){ const liked=getLiked(); if (!liked.length) return -1; const pos=liked.indexOf(currentTrack); return pos!==-1 && pos<liked.length-1 ? liked[pos+1] : liked[0]; }
+function updateAvailableTracks(){
+  const pc = getPlayerConfig();
+  if (!pc || !Array.isArray(pc.tracks)) { availableTracks = []; return; }
+  availableTracks = favoritesOnlyMode
+    ? getLikedForPlayback()
+    : Array.from({ length: pc.tracks.length }, (_, i) => i);
+}
+function getNextFavoriteTrack(){
+  const liked = getLikedForPlayback();
+  if (!liked.length) return -1;
+  const pos = liked.indexOf(playingTrack);
+  return pos !== -1 && pos < liked.length - 1 ? liked[pos + 1] : liked[0];
+}
 
 function previousTrack(){
-  if (repeatMode){ const a=document.getElementById('audio'); a.currentTime=0; a.play(); return; }
+  if (repeatMode){ const a=document.getElementById('audio'); if (a){ a.currentTime=0; a.play().catch(()=>{});} return; }
   updateAvailableTracks();
   if (!availableTracks.length) return NotificationSystem.warning('Нет доступных треков');
-  if (shuffleMode){ shuffleIndex = Math.max(0, shuffleIndex-1); showTrack(shuffledPlaylist[shuffleIndex]||availableTracks[0], true); }
-  else if (favoritesOnlyMode){ const idx=availableTracks.indexOf(currentTrack); const prev = idx>0 ? availableTracks[idx-1] : availableTracks[availableTracks.length-1]; showTrack(prev,true); }
-  else { const prev = currentTrack>0 ? currentTrack-1 : config.tracks.length-1; showTrack(prev,true); }
+
+  const pc = getPlayerConfig();
+  if (!pc) return;
+
+  if (shuffleMode){
+    shuffleIndex = Math.max(0, shuffleIndex - 1);
+    const cand = shuffledPlaylist[shuffleIndex] ?? availableTracks[0];
+    showTrack(cand, true);
+  } else if (favoritesOnlyMode){
+    const idx = availableTracks.indexOf(playingTrack);
+    const prev = idx > 0 ? availableTracks[idx - 1] : availableTracks[availableTracks.length - 1];
+    showTrack(prev, true);
+  } else {
+    const prev = playingTrack > 0 ? playingTrack - 1 : pc.tracks.length - 1;
+    showTrack(prev, true);
+  }
 }
+
 function nextTrack(){
   if (repeatMode) {
     const a = document.getElementById('audio');
@@ -1489,8 +1578,9 @@ function nextTrack(){
     return;
   }
 
+  const pc = getPlayerConfig(); if (!pc) return;
+
   if (shuffleMode) {
-    // Без остановок и без повтора текущей, если треков больше одного
     if (!Array.isArray(shuffledPlaylist) || shuffledPlaylist.length === 0) {
       createShuffledPlaylist();
     }
@@ -1500,9 +1590,7 @@ function nextTrack(){
       shuffleIndex = 0;
     }
     let candidate = shuffledPlaylist[shuffleIndex];
-
-    // Страховка: не выбирать текущий, если есть выбор
-    if (availableTracks.length > 1 && candidate === currentTrack) {
+    if (availableTracks.length > 1 && candidate === playingTrack) {
       shuffleIndex = (shuffleIndex + 1) % shuffledPlaylist.length;
       candidate = shuffledPlaylist[shuffleIndex];
     }
@@ -1511,41 +1599,35 @@ function nextTrack(){
   }
 
   if (favoritesOnlyMode) {
-    // Крутим только избранные по кругу
-    const idx = availableTracks.indexOf(currentTrack);
+    const idx = availableTracks.indexOf(playingTrack);
     const next = availableTracks[(idx + 1 + availableTracks.length) % availableTracks.length];
     showTrack(next, true);
     return;
   }
 
-  // Обычный альбом по кругу
-  const n = (currentTrack + 1) % config.tracks.length;
+  const n = (playingTrack + 1) % pc.tracks.length;
   showTrack(n, true);
 }
 function createShuffledPlaylist(){
   updateAvailableTracks();
   shuffledPlaylist = [...availableTracks];
 
-  // Убираем текущий из массива, чтобы следующий точно отличался (если треков > 1)
-  const i = shuffledPlaylist.indexOf(currentTrack);
+  const i = shuffledPlaylist.indexOf(playingTrack);
   if (i !== -1) shuffledPlaylist.splice(i, 1);
 
-  // Перемешиваем «хвост»
   for (let j = shuffledPlaylist.length - 1; j > 0; j--) {
     const k = Math.floor(Math.random() * (j + 1));
     [shuffledPlaylist[j], shuffledPlaylist[k]] = [shuffledPlaylist[k], shuffledPlaylist[j]];
   }
 
-  // Ставим текущий в начало для правильного next
-  if (availableTracks.includes(currentTrack)) shuffledPlaylist.unshift(currentTrack);
-
-  // Если всего один трек доступен — остаёмся на позиции 0
-  shuffleIndex = shuffledPlaylist.length > 1 ? 0 : 0;
+  if (availableTracks.includes(playingTrack)) shuffledPlaylist.unshift(playingTrack);
+  shuffleIndex = 0;
 }
 
 /* ====== Prefetch следующего трека (как в старом, адаптировано) ====== */
 function computeNextTrackIndexCandidate() {
-  if (!config || !Array.isArray(config.tracks) || config.tracks.length === 0) return -1;
+  const pc = getPlayerConfig();
+  if (!pc || !Array.isArray(pc.tracks) || pc.tracks.length === 0) return -1;
   updateAvailableTracks();
   if (shuffleMode) {
     if (!Array.isArray(shuffledPlaylist) || shuffledPlaylist.length === 0) createShuffledPlaylist();
@@ -1555,13 +1637,23 @@ function computeNextTrackIndexCandidate() {
   }
   if (favoritesOnlyMode) {
     if (!Array.isArray(availableTracks) || availableTracks.length === 0) return -1;
-    const curPos = availableTracks.indexOf(currentTrack);
+    const curPos = availableTracks.indexOf(playingTrack);
     if (curPos === -1) return availableTracks[0] ?? -1;
     const nextPos = (curPos + 1) % availableTracks.length;
     return availableTracks[nextPos] ?? -1;
   }
-  return (currentTrack >= 0) ? ((currentTrack + 1) % config.tracks.length) : 0;
+  return (playingTrack >= 0) ? ((playingTrack + 1) % pc.tracks.length) : 0;
 }
+function prefetchNextTrackAssets() {
+  const pc = getPlayerConfig(); if (!pc) return;
+  const cand = computeNextTrackIndexCandidate();
+  if (cand < 0 || !pc?.tracks?.[cand]) return;
+  const t = pc.tracks[cand];
+  prefetchAudioLink(t.audio, 'audio');
+  if (t.lyrics) prefetchAudioLink(t.lyrics, 'fetch');
+  if (t.fulltext) prefetchAudioLink(t.fulltext, 'fetch');
+}
+
 function prefetchAudioLink(url, asType='audio') {
   if (!url) return;
   try {
@@ -1574,14 +1666,6 @@ function prefetchAudioLink(url, asType='audio') {
     fetch(url).catch(()=>{});
   } catch(e) {}
 }
-function prefetchNextTrackAssets() {
-  const cand = computeNextTrackIndexCandidate();
-  if (cand < 0 || !config?.tracks?.[cand]) return;
-  const t = config.tracks[cand];
-  prefetchAudioLink(t.audio, 'audio');
-  if (t.lyrics) prefetchAudioLink(t.lyrics, 'fetch');
-  if (t.fulltext) prefetchAudioLink(t.fulltext, 'fetch');
-}
 
 /* ====== Загрузка лирики ====== */
 function loadLyrics(file){ fetch(file).then(r=>r.json()).then(js=>{ currentLyrics=js; renderLyrics(0); }).catch(()=>{ currentLyrics=[]; }); }
@@ -1589,10 +1673,14 @@ function loadLyrics(file){ fetch(file).then(r=>r.json()).then(js=>{ currentLyric
 /* ====== MediaSession ====== */
 function setupMediaSession(){
   if (!('mediaSession' in navigator)) return;
-  const tr=config.tracks[currentTrack];
+  const pc = getPlayerConfig();
+  const tr = pc?.tracks?.[playingTrack];
+  if (!tr) return;
   navigator.mediaSession.metadata = new MediaMetadata({
-    title: tr.title, artist: config.artist || 'Витрина Разбита', album: config.albumName || 'Альбом',
-    artwork: [{src: coverGalleryArr[0]||'img/logo.png', sizes:'512x512', type:'image/png'}]
+    title: tr.title,
+    artist: pc.artist || 'Витрина Разбита',
+    album: pc.albumName || 'Альбом',
+    artwork: [{ src: (playingCovers[0] || 'img/logo.png'), sizes: '512x512', type: 'image/png' }]
   });
   navigator.mediaSession.setActionHandler('play', ()=>{ const a=document.getElementById('audio'); a&&a.play(); updatePlayPauseIcon(); });
   navigator.mediaSession.setActionHandler('pause', ()=>{ const a=document.getElementById('audio'); a&&a.pause(); updatePlayPauseIcon(); });
@@ -1633,7 +1721,14 @@ window.addEventListener('keydown', function(e){
     case '3': if (bitEnabled){ bitIntensity=15; localStorage.setItem('bitIntensity','15'); NotificationSystem.info('💿 Интенсивность: 15%'); } break;
     case 'Y': e.preventDefault(); if (currentTrack>=0) toggleLyricsView(); break;
     case 'W': e.preventDefault(); document.getElementById('track-list')?.scrollIntoView({behavior:'smooth'}); break;
-    case 'D': e.preventDefault(); if (currentTrack>=0) toggleLike(currentTrack); break;
+    case 'D':
+      e.preventDefault();
+      if (isBrowsingSameAsPlaying()) {
+        if (playingTrack >= 0) toggleLike(playingTrack);
+      } else {
+        toggleLikePlaying();
+      }
+      break;
     case '?': e.preventDefault(); showHotkeysModal(); break;
   }
   if (e.key>='1' && e.key<='9' && !e.shiftKey && !e.ctrlKey && !e.altKey){
@@ -1674,25 +1769,32 @@ function parseDeepLink(){
 
 /* ====== Скачивания ====== */
 function getTrackFileName(track, idx, artist){ return `${String(idx+1).padStart(2,'0')} - ${track.title} - ${artist}.mp3`.replace(/[\\/:"*?<>|]+/g,'_'); }
-function openDownloadModal(e){ if (e) e.preventDefault(); const tr=config.tracks[currentTrack]; const fn=getTrackFileName(tr,currentTrack,config.artist); document.getElementById('download-modal-filename').innerHTML=`<b>${fn}</b>`; document.getElementById('download-modal').classList.add('active'); }
-function closeDownloadModal(){ document.getElementById('download-modal').classList.remove('active'); }
-document.getElementById('download-modal').onclick = function(e){ if (e.target===this) closeDownloadModal(); };
+function openDownloadModal(e){
+  if (e) e.preventDefault();
+  const pc = getPlayerConfig(); const tr = pc?.tracks?.[playingTrack];
+  if (!tr) return;
+  const fn = getTrackFileName(tr, playingTrack, pc.artist || 'Витрина Разбита');
+  document.getElementById('download-modal-filename').innerHTML=`<b>${fn}</b>`;
+  document.getElementById('download-modal').classList.add('active');
+}
 
 async function downloadCurrentTrack(){
-  const tr=config.tracks[currentTrack];
-  const fn=getTrackFileName(tr,currentTrack,config.artist);
+  const pc = getPlayerConfig(); const tr = pc?.tracks?.[playingTrack];
+  if (!tr) return;
+  const fn = getTrackFileName(tr, playingTrack, pc.artist || 'Витрина Разбита');
   const a=document.createElement('a'); a.href=tr.audio; a.download=fn;
   document.body.appendChild(a); a.click(); setTimeout(()=>{ document.body.removeChild(a); },250);
   closeDownloadModal(); NotificationSystem.success('Файл будет загружен!');
 }
 
 async function shareCurrentTrack(){
-  const tr=config.tracks[currentTrack];
+  const pc = getPlayerConfig(); const tr = pc?.tracks?.[playingTrack];
+  if (!tr) return;
   const a = document.getElementById('audio');
   const t = a ? Math.floor(a.currentTime || 0) : 0;
   const timeParam = t > 10 ? `&time=${t}` : '';
-  const shareUrl = location.origin + location.pathname + `?album=${currentAlbumKey}&track=${currentTrack}${timeParam}`;
-  const txt=`🎵 ${tr.title} - ${config.artist}\n🎧 Слушай:`;
+  const shareUrl = location.origin + location.pathname + `?album=${playingAlbumKey}&track=${playingTrack}${timeParam}`;
+  const txt = `🎵 ${tr.title} - ${pc.artist || 'Витрина Разбита'}\n🎧 Слушай:`;
   if (navigator.share){
     try { await navigator.share({title: tr.title, text: txt, url: shareUrl}); NotificationSystem.success('Ссылка отправлена!'); closeDownloadModal(); } catch {}
   } else {
@@ -1700,9 +1802,9 @@ async function shareCurrentTrack(){
     NotificationSystem.success('Ссылка скопирована!');
   }
 }
-async function openInAppCurrentTrack(){ await shareCurrentTrack(); }
 function copyLinkCurrentTrack(){
-  const tr=config.tracks[currentTrack];
+  const pc = getPlayerConfig(); const tr = pc?.tracks?.[playingTrack];
+  if (!tr) return;
   const directUrl = tr.audio;
   if (navigator.clipboard && window.isSecureContext){
     navigator.clipboard.writeText(directUrl).then(()=>NotificationSystem.success('Прямая ссылка скопирована!'),()=>NotificationSystem.error('Не удалось скопировать'));
