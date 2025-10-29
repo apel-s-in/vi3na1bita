@@ -547,11 +547,6 @@ let animationFrame = null;
 let filesToDownload = [];
 let __currentAudio = null;
 
-// NEW: отдельный контекст воспроизведения (не зависит от открытого в UI альбома)
-let playingAlbumKey = null;
-let playingAlbumBase = '';
-let playingConfig = null;
-
 /* ====== Безопасные URL helper'ы (абсолютное склеивание) ====== */
 function normalizeBase(b) {
   try {
@@ -696,8 +691,7 @@ const PlayerState = {
     try {
       const a = document.getElementById('audio');
       const data = {
-        // ВАЖНО: сохраняем именно альбом, из которого ИДЕТ ВОСПРОИЗВЕДЕНИЕ
-        album: playingAlbumKey || currentAlbumKey,
+        album: currentAlbumKey,
         trackIndex: currentTrack,
         position: a ? a.currentTime : 0,
         volume: a ? a.volume : parseFloat(localStorage.getItem('playerVolume')) || 1,
@@ -942,41 +936,26 @@ function migrateLegacyLikedIfNeeded(map) {
   return map;
 }
 
-/* Список избранных по ЛЮБОМУ альбому */
-function getLikedFor(albumKey) {
+/* Список избранных по текущему альбому */
+function getLiked() {
   let map = getLikedMap();
   map = migrateLegacyLikedIfNeeded(map);
-  if (!albumKey) return [];
-  const arr = map[albumKey];
+  if (!currentAlbumKey) return [];
+  const arr = map[currentAlbumKey];
   return Array.isArray(arr) ? arr : [];
 }
 
-/* Обертка: по текущему открытому в UI альбому (как было) */
-function getLiked() {
-  return getLikedFor(currentAlbumKey);
-}
-
-/* Сохранить избранные по ЛЮБОМУ альбому */
-function saveLikedFor(albumKey, arr) {
-  if (!albumKey) return;
+/* Сохранить избранные по текущему альбому */
+function saveLiked(arr) {
+  if (!currentAlbumKey) return;
   const map = getLikedMap();
-  map[albumKey] = Array.from(new Set((arr || []).filter(n => Number.isInteger(n))));
+  map[currentAlbumKey] = Array.from(new Set(arr.filter(n => Number.isInteger(n))));
   localStorage.setItem(LIKED_STORAGE_KEY_V2, JSON.stringify(map));
 }
 
-/* Обертка: сохранить по текущему открытому альбому (как было) */
-function saveLiked(arr) {
-  return saveLikedFor(currentAlbumKey, arr);
-}
-
-/* Проверка «в избранном» по ЛЮБОМУ альбому */
-function isLikedFor(albumKey, idx) {
-  return getLikedFor(albumKey).includes(idx);
-}
-
-/* Обертка: проверка для текущего открытого альбома (как было) */
+/* Проверка «в избранном» для текущего альбома */
 function isLiked(idx) {
-  return isLikedFor(currentAlbumKey, idx);
+  return getLiked().includes(idx);
 }
 
 /* ====== Треки (список) ====== */
@@ -990,7 +969,7 @@ function buildTrackList() {
   let html = '';
   for (let i = 0; i < config.tracks.length; i++) {
     const t = config.tracks[i];
-    html += `<div class="track${(playingAlbumKey===currentAlbumKey && i === currentTrack) ? ' current' : ''}" id="trk${i}" onclick="pickAndPlayTrack(${i})">
+    html += `<div class="track${i === currentTrack ? ' current' : ''}" id="trk${i}" onclick="pickAndPlayTrack(${i})">
       <span class="tnum">${String(i + 1).padStart(2, '0')}.</span>
       <span class="track-title">${t.title}</span>
       <img src="${isLiked(i) ? 'img/star.png' : 'img/star2.png'}"
@@ -1001,7 +980,7 @@ function buildTrackList() {
     </div>`;
 
     // Если плеер НЕ сохранён во внешнем контейнере — добавляем placeholder под текущим треком
-    if ((playingAlbumKey === currentAlbumKey) && i === currentTrack && !preservedInNowPlaying) {
+    if (i === currentTrack && !preservedInNowPlaying) {
       html += `<div class="lyrics-player-block" id="lyricsplayerblock"></div>`;
     }
   }
@@ -1081,27 +1060,18 @@ function stopAndCleanupAudio(a) {
   try { a.removeAttribute('src'); a.load(); } catch(e) {}
 }
 
-function pickAndPlayTrack(n){ showTrack(n, true, true); autoPlayEnabled = true; }
+function pickAndPlayTrack(n){ showTrack(n, true); autoPlayEnabled = true; }
 
-function showTrack(n, doPlay, adopt = false) {
-  // Если ещё нет контекста воспроизведения ИЛИ явно просим его «усыновить» из текущего альбома
-  if (!playingConfig || adopt === true) {
-    playingAlbumKey = currentAlbumKey;
-    playingAlbumBase = albumBase;
-    // Делаем снимок необходимого для плеера (трек-лист и метаданные)
-    playingConfig = {
-      tracks: (config?.tracks || []).map(t => ({ ...t })),
-      artist: config?.artist,
-      albumName: config?.albumName
-    };
-  }
-
+function showTrack(n, doPlay) {
   // Останавливаем ТОЛЬКО текущий audio-элемент (если он есть)
   stopAndCleanupAudio(getCurrentAudio());
   __currentAudio = null;
 
-  // ВАЖНО: НЕ очищаем now-playing — если плеер находится там, он останется, а мы обновим его содержимое
-  // (контейнер #lyricsplayerblock будет перерисован внутри renderLyricsBlock)
+  // Если есть внешний контейнер now-playing — очищаем его (устраняем старый UI)
+  const holder = document.getElementById('now-playing');
+  if (holder && holder.firstChild) {
+    holder.innerHTML = '';
+  }
 
   currentTrack = n;
   buildTrackList();
@@ -1193,9 +1163,7 @@ function renderLyricsBlock() {
     </div>
   `;
 
-  const tr = playingConfig?.tracks?.[currentTrack];
-  if (!tr) return;
-
+  const tr = config.tracks[currentTrack];
   const audioEl = document.getElementById('audio');
   if (__currentAudio && __currentAudio !== audioEl) stopAndCleanupAudio(__currentAudio);
   __currentAudio = audioEl;
@@ -1470,12 +1438,11 @@ function toggleFavoritesOnly(){
     updateAvailableTracks();
     NotificationSystem.success(`⭐ Только избранные (${liked.length})`);
 
-    // Если текущий не входит в избранные в ИГРАЕМОМ альбоме — переключаемся на первый избранный
-    if (!isLikedFor(playingAlbumKey, currentTrack)) {
+    // Если текущий не входит в избранные — переключаемся на первый избранный
+    if (!isLiked(currentTrack)) {
       const n = getNextFavoriteTrack();
       if (n !== -1) showTrack(n, true);
     }
-
 
     // Перестроим Shuffle-лист
     if (shuffleMode) createShuffledPlaylist();
@@ -1498,39 +1465,17 @@ function toggleFavoritesOnly(){
   localStorage.setItem('favoritesOnlyMode', favoritesOnlyMode ? '1' : '0');
 }
 
-function updateAvailableTracks(){
-  if (!playingConfig || !playingConfig.tracks) { availableTracks = []; return; }
-  availableTracks = favoritesOnlyMode
-    ? getLikedFor(playingAlbumKey)
-    : Array.from({ length: playingConfig.tracks.length }, (_, i) => i);
-}
-function getNextFavoriteTrack(){
-  const liked = getLikedFor(playingAlbumKey);
-  if (!liked.length) return -1;
-  const pos = liked.indexOf(currentTrack);
-  return pos !== -1 && pos < liked.length - 1 ? liked[pos + 1] : liked[0];
-}
+function updateAvailableTracks(){ availableTracks = favoritesOnlyMode ? getLiked() : Array.from({length:config.tracks.length},(_,i)=>i); }
+function getNextFavoriteTrack(){ const liked=getLiked(); if (!liked.length) return -1; const pos=liked.indexOf(currentTrack); return pos!==-1 && pos<liked.length-1 ? liked[pos+1] : liked[0]; }
 
 function previousTrack(){
   if (repeatMode){ const a=document.getElementById('audio'); a.currentTime=0; a.play(); return; }
   updateAvailableTracks();
   if (!availableTracks.length) return NotificationSystem.warning('Нет доступных треков');
-  if (shuffleMode){
-    shuffleIndex = Math.max(0, shuffleIndex-1);
-    showTrack(shuffledPlaylist[shuffleIndex]||availableTracks[0], true);
-  }
-  else if (favoritesOnlyMode){
-    const idx=availableTracks.indexOf(currentTrack);
-    const prev = idx>0 ? availableTracks[idx-1] : availableTracks[availableTracks.length-1];
-    showTrack(prev,true);
-  }
-  else {
-    if (!playingConfig || !playingConfig.tracks?.length) return;
-    const prev = currentTrack>0 ? currentTrack-1 : playingConfig.tracks.length-1;
-    showTrack(prev,true);
-  }
+  if (shuffleMode){ shuffleIndex = Math.max(0, shuffleIndex-1); showTrack(shuffledPlaylist[shuffleIndex]||availableTracks[0], true); }
+  else if (favoritesOnlyMode){ const idx=availableTracks.indexOf(currentTrack); const prev = idx>0 ? availableTracks[idx-1] : availableTracks[availableTracks.length-1]; showTrack(prev,true); }
+  else { const prev = currentTrack>0 ? currentTrack-1 : config.tracks.length-1; showTrack(prev,true); }
 }
-
 function nextTrack(){
   if (repeatMode) {
     const a = document.getElementById('audio');
@@ -1545,6 +1490,7 @@ function nextTrack(){
   }
 
   if (shuffleMode) {
+    // Без остановок и без повтора текущей, если треков больше одного
     if (!Array.isArray(shuffledPlaylist) || shuffledPlaylist.length === 0) {
       createShuffledPlaylist();
     }
@@ -1554,6 +1500,8 @@ function nextTrack(){
       shuffleIndex = 0;
     }
     let candidate = shuffledPlaylist[shuffleIndex];
+
+    // Страховка: не выбирать текущий, если есть выбор
     if (availableTracks.length > 1 && candidate === currentTrack) {
       shuffleIndex = (shuffleIndex + 1) % shuffledPlaylist.length;
       candidate = shuffledPlaylist[shuffleIndex];
@@ -1563,17 +1511,17 @@ function nextTrack(){
   }
 
   if (favoritesOnlyMode) {
+    // Крутим только избранные по кругу
     const idx = availableTracks.indexOf(currentTrack);
     const next = availableTracks[(idx + 1 + availableTracks.length) % availableTracks.length];
     showTrack(next, true);
     return;
   }
 
-  if (!playingConfig || !playingConfig.tracks?.length) return;
-  const n = (currentTrack + 1) % playingConfig.tracks.length;
+  // Обычный альбом по кругу
+  const n = (currentTrack + 1) % config.tracks.length;
   showTrack(n, true);
 }
-
 function createShuffledPlaylist(){
   updateAvailableTracks();
   shuffledPlaylist = [...availableTracks];
@@ -1597,7 +1545,7 @@ function createShuffledPlaylist(){
 
 /* ====== Prefetch следующего трека (как в старом, адаптировано) ====== */
 function computeNextTrackIndexCandidate() {
-  if (!playingConfig || !Array.isArray(playingConfig.tracks) || playingConfig.tracks.length === 0) return -1;
+  if (!config || !Array.isArray(config.tracks) || config.tracks.length === 0) return -1;
   updateAvailableTracks();
   if (shuffleMode) {
     if (!Array.isArray(shuffledPlaylist) || shuffledPlaylist.length === 0) createShuffledPlaylist();
@@ -1612,7 +1560,7 @@ function computeNextTrackIndexCandidate() {
     const nextPos = (curPos + 1) % availableTracks.length;
     return availableTracks[nextPos] ?? -1;
   }
-  return (currentTrack >= 0) ? ((currentTrack + 1) % playingConfig.tracks.length) : 0;
+  return (currentTrack >= 0) ? ((currentTrack + 1) % config.tracks.length) : 0;
 }
 function prefetchAudioLink(url, asType='audio') {
   if (!url) return;
@@ -1628,8 +1576,8 @@ function prefetchAudioLink(url, asType='audio') {
 }
 function prefetchNextTrackAssets() {
   const cand = computeNextTrackIndexCandidate();
-  if (cand < 0 || !playingConfig?.tracks?.[cand]) return;
-  const t = playingConfig.tracks[cand];
+  if (cand < 0 || !config?.tracks?.[cand]) return;
+  const t = config.tracks[cand];
   prefetchAudioLink(t.audio, 'audio');
   if (t.lyrics) prefetchAudioLink(t.lyrics, 'fetch');
   if (t.fulltext) prefetchAudioLink(t.fulltext, 'fetch');
@@ -1641,13 +1589,10 @@ function loadLyrics(file){ fetch(file).then(r=>r.json()).then(js=>{ currentLyric
 /* ====== MediaSession ====== */
 function setupMediaSession(){
   if (!('mediaSession' in navigator)) return;
-  const tr = playingConfig?.tracks?.[currentTrack];
-  if (!tr) return;
+  const tr=config.tracks[currentTrack];
   navigator.mediaSession.metadata = new MediaMetadata({
-    title: tr.title,
-    artist: playingConfig.artist || 'Витрина Разбита',
-    album: playingConfig.albumName || 'Альбом',
-    artwork: [{ src: absJoin(playingAlbumBase || '', 'Cover.png'), sizes: '512x512', type: 'image/png' }]
+    title: tr.title, artist: config.artist || 'Витрина Разбита', album: config.albumName || 'Альбом',
+    artwork: [{src: coverGalleryArr[0]||'img/logo.png', sizes:'512x512', type:'image/png'}]
   });
   navigator.mediaSession.setActionHandler('play', ()=>{ const a=document.getElementById('audio'); a&&a.play(); updatePlayPauseIcon(); });
   navigator.mediaSession.setActionHandler('pause', ()=>{ const a=document.getElementById('audio'); a&&a.pause(); updatePlayPauseIcon(); });
@@ -1692,7 +1637,7 @@ window.addEventListener('keydown', function(e){
     case '?': e.preventDefault(); showHotkeysModal(); break;
   }
   if (e.key>='1' && e.key<='9' && !e.shiftKey && !e.ctrlKey && !e.altKey){
-    const i=parseInt(e.key)-1; if (config && i<config.tracks.length){ e.preventDefault(); showTrack(i,true,true); }
+    const i=parseInt(e.key)-1; if (config && i<config.tracks.length){ e.preventDefault(); showTrack(i,true); }
   }
 });
 function showHotkeysModal(){ document.getElementById('hotkeys-modal').classList.add('active'); }
