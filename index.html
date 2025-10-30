@@ -1143,63 +1143,35 @@ async function openRelizView(){
     const header = document.querySelector('header');
     header && header.insertAdjacentElement('afterend', cont);
   }
+
+  // Встраиваем автономную страницу новостей
   cont.innerHTML = `
     <div class="embed-reliz" style="min-height:320px; color:#cfe3ff; padding:10px;">
       <h2 style="margin:0 0 12px 0;">НОВОСТИ</h2>
-      <div id="news-embed" style="width:100%;"></div>
-      <div id="news-links" style="margin-top:14px;"></div>
+      <iframe id="news-iframe"
+              src="./news.html"
+              title="Новости — Витрина Разбита"
+              style="width:100%; min-height:600px; border:1px solid rgba(255,255,255,.1); border-radius:10px; background:#0b0e15;"
+              loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="encrypted-media; picture-in-picture; fullscreen"></iframe>
     </div>`;
 
   // Переводим плеер в мини-режим (если играет)
   applyMiniModeUI();
 
-  async function openRelizView(){
-    // UI: «Новости»
-    viewMode = 'reliz';
-    setActiveAlbumIcon(SPECIAL_RELIZ_KEY);
-
-    const list = document.getElementById('track-list');
-    const cw = document.getElementById('cover-wrap');
-    if (list) list.style.display = 'none';
-    if (cw) cw.style.display = 'none';
-
-    let cont = document.getElementById('reliz-container');
-    if (!cont) {
-      cont = document.createElement('div');
-      cont.id = 'reliz-container';
-      const header = document.querySelector('header');
-      header && header.insertAdjacentElement('afterend', cont);
-    }
-
-    // Встраиваем нашу страницу новостей (самостоятельная, авто‑адаптивная)
-    cont.innerHTML = `
-      <div class="embed-reliz" style="min-height:320px; color:#cfe3ff; padding:10px;">
-        <h2 style="margin:0 0 12px 0;">НОВОСТИ</h2>
-        <iframe id="news-iframe"
-                src="./news/index.html"
-                title="Новости — Витрина Разбита"
-                style="width:100%; min-height:600px; border:1px solid rgba(255,255,255,.1); border-radius:10px; background:#0b0e15;"
-                loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="encrypted-media; picture-in-picture; fullscreen"></iframe>
-      </div>`;
-
-    // Переводим плеер в мини-режим (если играет)
-    applyMiniModeUI();
-
-    // Слушаем сообщение о высоте контента от news/index.html и подгоняем iframe
-    try {
-      const iframe = document.getElementById('news-iframe');
-      function onNewsMessage(e){
-        const data = e && e.data;
-        if (!data || typeof data !== 'object') return;
-        if (data.type === 'news_height' && typeof data.height === 'number' && iframe) {
-          const safeH = Math.max(600, Math.min(5000, Math.round(data.height)));
-          iframe.style.minHeight = safeH + 'px';
-          iframe.style.height = safeH + 'px';
-        }
+  // Слушаем сообщение о высоте контента и подгоняем iframe
+  try {
+    const iframe = document.getElementById('news-iframe');
+    function onNewsMessage(e){
+      const data = e && e.data;
+      if (!data || typeof data !== 'object') return;
+      if (data.type === 'news_height' && typeof data.height === 'number' && iframe) {
+        const safeH = Math.max(600, Math.min(5000, Math.round(data.height)));
+        iframe.style.minHeight = safeH + 'px';
+        iframe.style.height = safeH + 'px';
       }
-      window.addEventListener('message', onNewsMessage);
-    } catch(e){}
-  }
+    }
+    window.addEventListener('message', onNewsMessage);
+  } catch(e){}
 }
 
 function clearRelizView(){
