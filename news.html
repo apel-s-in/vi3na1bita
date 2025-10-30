@@ -31,7 +31,11 @@
       display:flex; align-items:center; gap:10px;
       margin:4px 0 10px 0;
     }
-    .headline .logo{width:32px;height:32px;border-radius:8px; background:#111 url('img/logo.png') center/cover no-repeat; flex:0 0 32px; box-shadow:var(--shadow);}
+    .headline .logo{
+      width:32px;height:32px;border-radius:8px;
+      background:#111 url('img/logo.png') center/cover no-repeat;
+      flex:0 0 32px; box-shadow:var(--shadow);
+    }
     .headline h1{margin:0; font-size:18px; letter-spacing:.03em;}
     .subnote{color:var(--muted); font-size:12px; margin:3px 0 12px 0;}
 
@@ -78,8 +82,6 @@
       width:100%; border:none; display:block; background:#0b0e15;
       border-radius:10px; overflow:hidden;
     }
-    .video-box{ position:relative; width:100%; padding-top:56.25%; border-radius:10px; overflow:hidden; background:#000; }
-    .video-box iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; }
 
     .vk-box{ background:#0b0e15; border-radius:10px; overflow:hidden; padding:6px; }
     .vk-container{ width:100%; min-height:150px; }
@@ -117,14 +119,11 @@
     </div>
     <div class="subnote">Самое актуальное из наших соцсетей. Страница адаптирована под мобильный формат (max 400px).</div>
 
+    <!-- Быстрые ссылки -->
     <div class="quick-links" aria-label="Быстрые ссылки">
       <a class="btn" href="https://t.me/vitrina_razbita" target="_blank" rel="noopener" title="Telegram">
         <svg viewBox="0 0 24 24" fill="#4daaff"><path d="M9.04 15.47l-.39 5.51c.56 0 .81-.24 1.1-.53l2.64-2.53 5.46 3.97c1 .55 1.7.26 1.96-.93l3.55-16.64.01-.01c.32-1.5-.54-2.09-1.51-1.72L1.16 9.7c-1.46.57-1.44 1.38-.25 1.75l5.4 1.68 12.56-7.93c.59-.38 1.12-.17.68.21"/></svg>
         Telegram
-      </a>
-      <a class="btn" href="https://youtube.com/@..." target="_blank" rel="noopener" title="YouTube">
-        <svg viewBox="0 0 24 24" fill="#ff3b3b"><path d="M23.5 6.2s-.2-1.6-.8-2.3c-.8-.9-1.8-.9-2.2-1C16.7 2.5 12 2.5 12 2.5h0s-4.7 0-8.5.4c-.4 0-1.4 0-2.2 1-.6.7-.8 2.3-.8 2.3S0 8.1 0 10v1.9c0 1.9.2 3.8.2 3.8s.2 1.6.8 2.3c.8.9 1.9.9 2.3 1 1.7.2 7.5.4 8.6.4 0 0 4.7 0 8.5-.4.4 0 1.4 0 2.2-1 .6-.7.8-2.3.8-2.3s.2-1.9.2-3.8V10c0-1.9-.2-3.8-.2-3.8zM9.6 13.6V6.9l6.3 3.35-6.3 3.35z"/></svg>
-        YouTube
       </a>
       <a class="btn" href="https://music.yandex.ru/artist/24739002?utm_source=web&utm_medium=copy_link" target="_blank" rel="noopener" title="Яндекс Музыка">
         <svg viewBox="0 0 24 24" fill="#ffd400"><circle cx="12" cy="12" r="10"/></svg>
@@ -136,32 +135,23 @@
       </a>
     </div>
 
-    <div class="section-title">Лента Telegram</div>
-    <div class="card">
-      <div class="card-head">
-        <span class="pill">TG</span>
-        <div class="title">Канал @vitrina_razbita</div>
-      </div>
-      <div class="body">
-        <iframe
-          class="embed-frame"
-          id="tg-feed"
-          src="https://t.me/s/vitrina_razbita?embed=1&locale=ru"
-          loading="lazy"
-          style="height: 620px;"
-          title="Telegram feed">
-        </iframe>
-        <div class="muted" style="margin-top:8px;">Если лента не загрузилась — откройте канал в приложении Telegram.</div>
-      </div>
-    </div>
+    <!-- Яндекс Музыка — перед Телеграм -->
+    <div class="section-title">Мы в Яндекс Музыке</div>
+    <div id="ym-box"></div>
 
-    <div class="section-title">Избранное</div>
-    <div id="custom-feed"></div>
+    <!-- Лента Telegram — один свежий пост (вы обновляете вручную в custom.json) -->
+    <div class="section-title">Лента Telegram</div>
+    <div id="tg-box"></div>
+
+    <!-- ВК плейлисты -->
+    <div class="section-title">Плейлисты VK</div>
+    <div id="vk-box"></div>
 
     <div class="spacer"></div>
   </div>
 
   <script>
+    // Сообщаем родителю высоту контента (для подгонки iframe)
     function postHeight() {
       try {
         const h = document.documentElement.scrollHeight;
@@ -174,23 +164,12 @@
     window.addEventListener('DOMContentLoaded', postHeight);
     setTimeout(postHeight, 500);
 
-    const FEED_BOX = document.getElementById('custom-feed');
+    // Контейнеры
+    const YM_BOX = document.getElementById('ym-box');
+    const TG_BOX = document.getElementById('tg-box');
+    const VK_BOX = document.getElementById('vk-box');
 
-    function extractYouTubeId(url) {
-      try {
-        const u = new URL(url);
-        if (/youtube\.com$/i.test(u.hostname)) {
-          if (u.pathname.startsWith('/watch')) return u.searchParams.get('v');
-          if (u.pathname.startsWith('/shorts/')) return u.pathname.split('/')[2];
-          if (u.pathname.startsWith('/embed/')) return u.pathname.split('/')[2];
-        }
-        if (/youtu\.be$/i.test(u.hostname)) {
-          return u.pathname.replace(/^\/+/, '').split('/')[0];
-        }
-      } catch(e){}
-      return null;
-    }
-
+    // Вспомогательные рендеры
     function createCardHead(pillText, title){
       const head = document.createElement('div');
       head.className = 'card-head';
@@ -203,47 +182,6 @@
       head.appendChild(pill);
       head.appendChild(t);
       return head;
-    }
-
-    function renderTelegramPost(item){
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.appendChild(createCardHead('TG', item.title || 'Пост в Telegram'));
-      const body = document.createElement('div');
-      body.className = 'body';
-      const src = item.url.includes('?') ? item.url + '&embed=1&locale=ru' : item.url + '?embed=1&locale=ru';
-      const ifr = document.createElement('iframe');
-      ifr.className = 'embed-frame';
-      ifr.loading = 'lazy';
-      ifr.title = 'Telegram пост';
-      ifr.style.height = (item.height || 460) + 'px';
-      ifr.src = src;
-      body.appendChild(ifr);
-      card.appendChild(body);
-      return card;
-    }
-
-    function renderYouTube(item){
-      const id = item.youtubeId || extractYouTubeId(item.url);
-      if (!id) return null;
-      const card = document.createElement('div');
-      card.className = 'card';
-      card.appendChild(createCardHead('YT', item.title || 'Видео на YouTube'));
-      const body = document.createElement('div');
-      body.className = 'body';
-      const vb = document.createElement('div');
-      vb.className = 'video-box';
-      vb.innerHTML = '<iframe src="https://www.youtube.com/embed/'+id+'" title="YouTube video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>';
-      body.appendChild(vb);
-      if (item.caption) {
-        const p = document.createElement('div');
-        p.className = 'muted';
-        p.style.marginTop = '8px';
-        p.textContent = item.caption;
-        body.appendChild(p);
-      }
-      card.appendChild(body);
-      return card;
     }
 
     function renderYandexMusic(item){
@@ -274,6 +212,25 @@
       return card;
     }
 
+    function renderTelegramPost(item){
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.appendChild(createCardHead('TG', item.title || 'Свежий пост в Telegram'));
+      const body = document.createElement('div');
+      body.className = 'body';
+      const src = item.url.includes('?') ? item.url + '&embed=1&locale=ru' : item.url + '?embed=1&locale=ru';
+      const ifr = document.createElement('iframe');
+      ifr.className = 'embed-frame';
+      ifr.loading = 'lazy';
+      ifr.title = 'Telegram пост';
+      ifr.style.height = (item.height || 460) + 'px';
+      ifr.src = src;
+      body.appendChild(ifr);
+      card.appendChild(body);
+      return card;
+    }
+
+    // VK плейлисты (OpenAPI)
     const vkQueue = [];
     function renderVKPlaylist(item, index){
       const card = document.createElement('div');
@@ -316,7 +273,8 @@
       }
     }
 
-    async function loadCustom(){
+    // Загрузка данных
+    async function loadData(){
       let data = null;
       try {
         const r = await fetch('./custom.json', { cache:'no-cache' });
@@ -325,33 +283,56 @@
         data = { items: [] };
       }
       const items = Array.isArray(data?.items) ? data.items : [];
-      if (!items.length){
-        const empty = document.createElement('div');
-        empty.className = 'muted';
-        empty.textContent = 'Пока нет закреплённых постов. Откройте ленту Telegram выше — там всегда свежие публикации.';
-        FEED_BOX.appendChild(empty);
-        postHeight();
-        return;
+
+      // 1) Яндекс Музыка — берём первый ym
+      const ymItem = items.find(x => String(x.type||'').toLowerCase() === 'ym' || String(x.type||'').toLowerCase() === 'yandex');
+      if (ymItem) {
+        const card = renderYandexMusic(ymItem);
+        if (card) YM_BOX.appendChild(card);
+      } else {
+        const stub = document.createElement('div');
+        stub.className = 'muted';
+        stub.textContent = 'Ссылка на Яндекс Музыку появится здесь.';
+        YM_BOX.appendChild(stub);
       }
-      items.forEach((item, idx)=>{
-        let card = null;
-        switch(String(item.type||'').toLowerCase()){
-          case 'tg': case 'tgpost':
-            card = renderTelegramPost(item); break;
-          case 'yt': case 'youtube':
-            card = renderYouTube(item); break;
-          case 'vk': case 'vkplaylist':
-            card = renderVKPlaylist(item, idx); break;
-          case 'ym': case 'yandex':
-            card = renderYandexMusic(item); break;
-        }
-        if (card) FEED_BOX.appendChild(card);
+
+      // 2) Лента Telegram — только один свежий пост (первый tg/tgpost)
+      const tgItem = items.find(x => {
+        const t = String(x.type||'').toLowerCase();
+        return t === 'tg' || t === 'tgpost';
       });
-      bootVK();
+      if (tgItem) {
+        const card = renderTelegramPost(tgItem);
+        if (card) TG_BOX.appendChild(card);
+      } else {
+        const stub = document.createElement('div');
+        stub.className = 'muted';
+        stub.textContent = 'Добавьте в custom.json объект типа "tgPost", чтобы здесь отобразился свежий пост.';
+        TG_BOX.appendChild(stub);
+      }
+
+      // 3) ВК — все плейлисты
+      const vkItems = items.filter(x => {
+        const t = String(x.type||'').toLowerCase();
+        return t === 'vk' || t === 'vkplaylist';
+      });
+      if (vkItems.length){
+        vkItems.forEach((it, idx) => {
+          const card = renderVKPlaylist(it, idx);
+          if (card) VK_BOX.appendChild(card);
+        });
+        bootVK();
+      } else {
+        const stub = document.createElement('div');
+        stub.className = 'muted';
+        stub.textContent = 'Плейлисты VK появятся здесь.';
+        VK_BOX.appendChild(stub);
+      }
+
       setTimeout(postHeight, 800);
     }
 
-    loadCustom();
+    loadData();
   </script>
 </body>
 </html>
