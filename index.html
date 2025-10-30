@@ -1459,11 +1459,15 @@ async function ensureFavoritesPlayback(startIndex){
   a.currentTime = 0;
   a.play().catch(()=>{});
 
+  // Подстраховка от возможных дублей плейера
+  dedupePlayerBlock();
+
   // 7) UI
   applyMiniModeUI();
   updateNextUpLabel();
   updateMiniNowHeader();
 }
+
 function updateFavoritesCurrentRow(idx) {
   try {
     const rows = document.querySelectorAll('#track-list .track');
@@ -1813,6 +1817,9 @@ function buildTrackList() {
 
   list.innerHTML = html;
 
+  // Подстраховка от возможных дублей плейера
+  dedupePlayerBlock();
+
   // Если вернулись в играющий альбом — перенесём существующий плеер под текущий трек
   if (preservedInNowPlaying && currentAlbumKey === playingAlbumKey) {
     const holder = document.getElementById('now-playing');
@@ -1998,6 +2005,19 @@ function stopAndCleanupAudio(a) {
   try { a.removeAttribute('src'); a.load(); } catch(e) {}
 }
 
+// Подстраховка от дубликатов #lyricsplayerblock (например, если он
+// случайно отрисован и в списке, и в now-playing)
+function dedupePlayerBlock() {
+  try {
+    const nodes = Array.from(document.querySelectorAll('#lyricsplayerblock'));
+    if (nodes.length <= 1) return;
+
+    // Сохраняем тот, внутри которого есть текущий audio, если он есть
+    let keep = nodes.find(n => n.querySelector('#audio')) || nodes[0];
+    nodes.forEach(n => { if (n !== keep) n.remove(); });
+  } catch {}
+}
+
 function pickAndPlayTrack(n){ showTrack(n, true); autoPlayEnabled = true; }
 
 function showTrack(n, doPlay) {
@@ -2152,6 +2172,9 @@ function renderLyricsBlock() {
   applyMiniModeUI();
   updateNextUpLabel();
   updateMiniNowHeader();
+
+  // Подстраховка от возможных дублей
+  dedupePlayerBlock();
 }
 
 /* ====== Лирика ====== */
@@ -2465,35 +2488,65 @@ function getNextFavoriteTrack(){
   const pos = liked.indexOf(playingTrack);
   return pos !== -1 && pos < liked.length - 1 ? liked[pos + 1] : liked[0];
 }
+// Используем контекст реального воспроизведения, если:
+// - играет ИЗБРАННОЕ, либо
+// - мы смотрим один альбом, а играет другой.
+function shouldUsePlaybackContext() {
+  return playingAlbumKey === SPECIAL_FAVORITES_KEY || isBrowsingOtherAlbum();
+}
 
 function previousTrack(){
-  if (repeatMode){ const a=document.getElementById('audio'); a.currentTime=0; a.play(); return; }
+  if (repeatMode) {
+    const a = document.getElementById('audio');
+    if (a) { a.currentTime = 0; a.play().catch(()=>{}); }
+    return;
+  }
 
-  if (isBrowsingOtherAlbum()) {
+  // ВАЖНО: если играет ИЗБРАННОЕ или мы смотрим не тот альбом, что играет,
+  // работаем строго внутри "контекста воспроизведения"
+  if (shouldUsePlaybackContext()) {
     const len = playingTracks ? playingTracks.length : 0;
     const available = getAvailableTracksForAlbum(playingAlbumKey, len);
-    if (!available.length) return NotificationSystem.warning('Нет доступных треков');
+    if (!available.length) { NotificationSystem.warning('Нет доступных треков'); return; }
+
     if (shuffleMode) {
       playingShuffleIndex = Math.max(0, playingShuffleIndex - 1);
       const cand = playingShuffledPlaylist[playingShuffleIndex] ?? available[0];
       playFromPlaybackAlbum(cand, true);
-    } else if (favoritesOnlyMode) {
+      return;
+    }
+
+    if (favoritesOnlyMode) {
       const idx = available.indexOf(playingTrack);
       const prev = idx > 0 ? available[idx - 1] : available[available.length - 1];
       playFromPlaybackAlbum(prev, true);
-    } else {
-      const prev = playingTrack > 0 ? playingTrack - 1 : (len - 1);
-      playFromPlaybackAlbum(prev, true);
+      return;
     }
+
+    const prev = playingTrack > 0 ? playingTrack - 1 : (len - 1);
+    playFromPlaybackAlbum(prev, true);
     return;
   }
 
-  // Обычный сценарий (играем просматриваемый альбом)
+  // Обычный сценарий (играет просматриваемый альбом)
   updateAvailableTracks();
-  if (!availableTracks.length) return NotificationSystem.warning('Нет доступных треков');
-  if (shuffleMode){ shuffleIndex = Math.max(0, shuffleIndex-1); showTrack(shuffledPlaylist[shuffleIndex]||availableTracks[0], true); }
-  else if (favoritesOnlyMode){ const idx=availableTracks.indexOf(currentTrack); const prev = idx>0 ? availableTracks[idx-1] : availableTracks[availableTracks.length-1]; showTrack(prev,true); }
-  else { const prev = currentTrack>0 ? currentTrack-1 : config.tracks.length-1; showTrack(prev,true); }
+  if (!availableTracks.length) { NotificationSystem.warning('Нет доступных треков'); return; }
+
+  if (shuffleMode) {
+    shuffleIndex = Math.max(0, shuffleIndex - 1);
+    showTrack(shuffledPlaylist[shuffleIndex] || availableTracks[0], true);
+    return;
+  }
+
+  if (favoritesOnlyMode) {
+    const idx = availableTracks.indexOf(currentTrack);
+    const prev = idx > 0 ? availableTracks[idx - 1] : availableTracks[availableTracks.length - 1];
+    showTrack(prev, true);
+    return;
+  }
+
+  const prev = currentTrack > 0 ? currentTrack - 1 : (config.tracks.length - 1);
+  showTrack(prev, true);
 }
 
 function nextTrack(){
@@ -2503,7 +2556,9 @@ function nextTrack(){
     return;
   }
 
-  if (isBrowsingOtherAlbum()) {
+  // ВАЖНО: если играет ИЗБРАННОЕ или мы смотрим не тот альбом, что играет,
+  // работаем строго внутри "контекста воспроизведения"
+  if (shouldUsePlaybackContext()) {
     const len = playingTracks ? playingTracks.length : 0;
     const available = getAvailableTracksForAlbum(playingAlbumKey, len);
     if (!available.length) { NotificationSystem.warning('Нет доступных треков'); return; }
@@ -2523,18 +2578,22 @@ function nextTrack(){
         candidate = playingShuffledPlaylist[playingShuffleIndex];
       }
       playFromPlaybackAlbum(candidate, true);
-    } else if (favoritesOnlyMode) {
+      return;
+    }
+
+    if (favoritesOnlyMode) {
       const idx = available.indexOf(playingTrack);
       const next = available[(idx + 1) % available.length];
       playFromPlaybackAlbum(next, true);
-    } else {
-      const n = (playingTrack + 1) % len;
-      playFromPlaybackAlbum(n, true);
+      return;
     }
+
+    const n = (playingTrack + 1) % len;
+    playFromPlaybackAlbum(n, true);
     return;
   }
 
-  // Обычный сценарий
+  // Обычный сценарий (играет просматриваемый альбом)
   updateAvailableTracks();
   if (!availableTracks.length) { NotificationSystem.warning('Нет доступных треков'); return; }
 
@@ -2561,6 +2620,7 @@ function nextTrack(){
   const n = (currentTrack + 1) % config.tracks.length;
   showTrack(n, true);
 }
+
 function createShuffledPlaylist(){
   updateAvailableTracks();
   shuffledPlaylist = [...availableTracks];
@@ -2638,6 +2698,9 @@ function playFromPlaybackAlbum(idx, doPlay) {
       if (row.nextSibling) row.parentNode.insertBefore(lp, row.nextSibling); else row.parentNode.appendChild(lp);
     }
   }
+
+  // Подстраховка от возможных дублей плейера
+  dedupePlayerBlock();
 
   const a = document.getElementById('audio');
   if (!a || !playingTracks) return;
