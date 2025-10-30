@@ -631,15 +631,57 @@ let __wasMini = false;
 let __savedLyricsModeForMini = null;  // 'normal' | 'hidden' | 'expanded' или null
 /* ====== Альбомные иконки / спец-режимы ====== */
 const SPECIAL_FAVORITES_KEY = '__favorites__';
-const SPECIAL_RELIZ_KEY = '__reliz__';
+const SPECIAL_RELIZ_KEY = '__reliz__'; // оставляем ключ совместимости
 let viewMode = 'album'; // 'album' | 'favorites' | 'reliz'
+
+/* Визуальный ряд иконок: ключи-«псевдонимы» для красоты, реальные ключи резолвим по алиасам ниже */
 const ICON_ALBUMS_ORDER = [
   { key: SPECIAL_FAVORITES_KEY,        title: '⭐⭐⭐ИЗБРАННОЕ⭐⭐⭐', icon: 'img/icon_album/icon-album-00.png' },
-  { key: 'golos-dushi',                title: 'Голос Души',       icon: 'img/icon_album/icon-album-02.png' },
-  { key: 'mezhdu-zlom-i-dobrom',       title: 'Между Злом и Добром', icon: 'img/icon_album/icon-album-01.png' },
-  { key: 'krevetochka',                title: 'КРЕВЕツTOCHKA',    icon: 'img/icon_album/icon-album+00.png' },
-  { key: SPECIAL_RELIZ_KEY,            title: 'БУДУЩИЕ РЕЛИЗЫ',   icon: 'img/icon_album/icon-album-??.png' }
+  { key: 'golos-dushi',                title: 'Голос Души',            icon: 'img/icon_album/icon-album-02.png' },
+  { key: 'mezhdu-zlom-i-dobrom',       title: 'Между Злом и Добром',   icon: 'img/icon_album/icon-album-01.png' },
+  { key: 'krevetochka',                title: 'КРЕВЕツTOCHKA',         icon: 'img/icon_album/icon-album+00.png' },
+  { key: SPECIAL_RELIZ_KEY,            title: 'НОВОСТИ',               icon: 'img/icon_album/icon-album-news.png' }
 ];
+
+/* Алиасы: сопоставляем псевдо-ключи и реальные ключи из albums.json */
+const ICON_KEY_ALIASES = {
+  'golos-dushi': ['golos', 'golos-dushi'],
+  'mezhdu-zlom-i-dobrom': ['mzid', 'mezhdu-zlom-i-dobrom'],
+  'odnazhdi-v-skazke': ['skazka', 'odnazhdi-v-skazke'],
+  'krevetochka': ['krevetochka']
+};
+/* Для подстраховки — соответствие псевдоключа и ожидаемого названия */
+const ICON_TITLE_MAP = {
+  'golos-dushi': 'Голос Души',
+  'mezhdu-zlom-i-dobrom': 'Между Злом и Добром',
+  'odnazhdi-v-skazke': 'Однажды в сказке',
+  'krevetochka': 'Креветочка'
+};
+
+/* Резолвим реальный ключ альбома под иконкой
+   1) Точное совпадение по ключу
+   2) Совпадение по алиасам
+   3) Поиск по названию (на всякий случай) */
+function resolveRealAlbumKey(iconKey) {
+  // 1) точное совпадение
+  if (albumByKey(iconKey)) return iconKey;
+
+  // 2) алиасы
+  const aliases = ICON_KEY_ALIASES[iconKey] || [];
+  for (const k of aliases) {
+    if (albumByKey(k)) return k;
+  }
+
+  // 3) поиск по названию
+  const expectedTitle = ICON_TITLE_MAP[iconKey];
+  if (expectedTitle) {
+    const found = albumsIndex.find(a => String(a.title).toLowerCase().includes(expectedTitle.toLowerCase()));
+    if (found) return found.key;
+  }
+
+  // 4) fallback: первый альбом (чтобы не падать), но лучше вернуть null и обработать
+  return null;
+}
 
 /* ====== Виртуальный альбом «ИЗБРАННОЕ» ====== */
 let favoritesModel = null;          // массив треков избранного (виртуальный плейлист)
@@ -930,7 +972,17 @@ function initializeMainUi() {
                   : (savedAlbum && albumByKey(savedAlbum) ? savedAlbum : first);
 
     if (toLoad) sel.value = toLoad;
-    sel.onchange = () => { viewMode='album'; clearRelizView(); document.getElementById('track-list').style.display = ''; document.getElementById('cover-wrap').style.display=''; setActiveAlbumIcon(sel.value); loadAlbumByKey(sel.value).then(()=> setCoverWrapVisible(!coverCollapsedMap[sel.value])); };
+    // сразу подсветим активную иконку под селектом
+    setActiveAlbumIcon(sel.value);
+
+    sel.onchange = () => {
+      viewMode='album';
+      clearRelizView();
+      document.getElementById('track-list').style.display = '';
+      document.getElementById('cover-wrap').style.display='';
+      setActiveAlbumIcon(sel.value);
+      loadAlbumByKey(sel.value).then(()=> setCoverWrapVisible(!coverCollapsedMap[sel.value]));
+    };
 
     if (localStorage.getItem('promoPassed') === '1') {
       // Переход напрямую в приложение при повторном запуске
@@ -1058,8 +1110,10 @@ function initializeMainUi() {
   })();
 }
 async function openRelizView(){
+  // UI: «Новости»
   viewMode = 'reliz';
   setActiveAlbumIcon(SPECIAL_RELIZ_KEY);
+
   const list = document.getElementById('track-list');
   const cw = document.getElementById('cover-wrap');
   if (list) list.style.display = 'none';
@@ -1072,19 +1126,68 @@ async function openRelizView(){
     const header = document.querySelector('header');
     header && header.insertAdjacentElement('afterend', cont);
   }
-  cont.innerHTML = '<div class="embed-reliz" style="min-height:320px; color:#cfe3ff;">Загрузка...</div>';
+  cont.innerHTML = `
+    <div class="embed-reliz" style="min-height:320px; color:#cfe3ff; padding:10px;">
+      <h2 style="margin:0 0 12px 0;">НОВОСТИ</h2>
+      <div id="news-embed" style="width:100%;"></div>
+      <div id="news-links" style="margin-top:14px;"></div>
+    </div>`;
 
-  // Перемещаем плеер в мини-режим (если играет)
+  // Переводим плеер в мини-режим (если играет)
   applyMiniModeUI();
 
+  // Пробуем собрать новости из соцсетей текущего альбома (или первого доступного)
   try {
-    const r = await fetch('./reliz.html', { cache: 'no-cache' });
-    const html = await r.text();
-    cont.innerHTML = `<div class="embed-reliz">${html}</div>`;
-  } catch {
-    cont.innerHTML = `<div class="embed-reliz" style="padding:10px;">Не удалось загрузить страницу релизов</div>`;
+    // Берём соцсети из текущего конфига, если есть
+    let socials = (config && Array.isArray(config.socials)) ? config.socials : [];
+
+    // Если соцсети пусты — попробуем первый альбом
+    if (!socials.length && albumsIndex.length) {
+      const firstKey = albumsIndex[0].key;
+      const cfg1 = await getAlbumConfigByKey(firstKey);
+      socials = Array.isArray(cfg1?.socials) ? cfg1.socials : [];
+    }
+
+    const embedBox = document.getElementById('news-embed');
+    const linksBox = document.getElementById('news-links');
+
+    // Пытаемся встроить Телеграм-канал
+    const tg = socials.find(s => /t\.me\/[^/\s]+/i.test(String(s.url)));
+    if (tg) {
+      const m = String(tg.url).match(/t\.me\/([^/\s?]+)/i);
+      if (m && m[1]) {
+        const ch = m[1];
+        embedBox.innerHTML = `
+          <iframe src="https://t.me/s/${ch}?embed=1&locale=ru"
+                  style="width:100%; min-height:560px; border:1px solid rgba(255,255,255,.1); border-radius:10px;"
+                  allowtransparency="true" loading="lazy"></iframe>`;
+      }
+    } else {
+      embedBox.innerHTML = `<div style="opacity:.8;">Добавьте ссылку на канал Telegram в socials, чтобы мы встроили ленту. Пока что — ссылки ниже.</div>`;
+    }
+
+    // Список ссылок на соцсети
+    if (socials.length) {
+      linksBox.innerHTML = `
+        <div style="opacity:.8; margin-bottom:8px;">Наши соцсети:</div>
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          ${socials.map(s => `<a href="${s.url}" target="_blank" rel="noopener" style="color:#8ab8fd;">${s.title}</a>`).join('')}
+        </div>`;
+    } else {
+      linksBox.innerHTML = `<div style="opacity:.7;">Ссылки на соцсети не найдены.</div>`;
+    }
+  } catch (e) {
+    // Fallback: грузим reliz.html как было
+    try {
+      const r = await fetch('./reliz.html', { cache: 'no-cache' });
+      const html = await r.text();
+      document.getElementById('news-embed').innerHTML = html;
+    } catch {
+      document.getElementById('news-embed').innerHTML = `<div style="padding:10px;">Не удалось загрузить «Новости»</div>`;
+    }
   }
 }
+
 function clearRelizView(){
   const cont = document.getElementById('reliz-container');
   if (cont) cont.remove();
@@ -1332,60 +1435,91 @@ function buildSocials() {
 function albumMetaByKey(key){ return albumsIndex.find(a => a.key === key) || null; }
 
 function buildAlbumIcons(){
-  const box = document.getElementById('album-icons'); if (!box) return;
+  const box = document.getElementById('album-icons'); 
+  if (!box) return;
+
+  // Собираем HTML с реальными ключами (для спец-иконок кладём спец-ключ)
   const html = ICON_ALBUMS_ORDER.map(it=>{
-    return `<div class="album-icon" data-akey="${it.key}" title="${it.title}">
-      <img src="${it.icon}" alt="${it.title}">
+    let dataKey = it.key;
+    if (it.key !== SPECIAL_FAVORITES_KEY && it.key !== SPECIAL_RELIZ_KEY) {
+      const real = resolveRealAlbumKey(it.key);
+      dataKey = real || '__unknown__';
+    }
+    const title = it.title || '';
+    const icon = it.icon || 'img/logo.png';
+    return `<div class="album-icon" data-akey="${dataKey}" data-icon="${it.key}" title="${title}">
+      <img src="${icon}" alt="${title}">
     </div>`;
   }).join('');
+
   box.innerHTML = html;
+
+  // Навешиваем обработчики
   box.querySelectorAll('.album-icon').forEach(el=>{
     el.onclick = ()=> onAlbumIconClick(el.getAttribute('data-akey'));
   });
-  // Инициализируем активное состояние
-  setActiveAlbumIcon(currentAlbumKey || '');
+
+  // Подсветка текущего альбома (если уже выбран)
+  setActiveAlbumIcon(currentAlbumKey || document.getElementById('album-select')?.value || (albumsIndex[0]?.key || ''));
 }
 
 function setActiveAlbumIcon(key){
-  const box = document.getElementById('album-icons'); if (!box) return;
+  const box = document.getElementById('album-icons'); 
+  if (!box) return;
   box.querySelectorAll('.album-icon').forEach(el=>{
     const k = el.getAttribute('data-akey');
-    el.classList.toggle('active', k === key);
+    el.classList.toggle('active', k && key && k === key);
   });
 }
 
 function onAlbumIconClick(key){
-  // Тап по активной иконке альбома — сворачиваем/разворачиваем галерею
-  if (viewMode === 'album' && key === currentAlbumKey && key !== SPECIAL_FAVORITES_KEY && key !== SPECIAL_RELIZ_KEY) {
-    const current = !!coverCollapsedMap[key];
-    setCoverWrapVisible(!current);
-    coverCollapsedMap[key] = current ? false : true;
-    try { localStorage.setItem('coverCollapsedMap', JSON.stringify(coverCollapsedMap)); } catch {}
-    return;
-  }
-
-  if (key === SPECIAL_RELIZ_KEY) {
-    openRelizView();
-    setActiveAlbumIcon(key);
-    return;
-  }
-
+  // Спец-режимы
   if (key === SPECIAL_FAVORITES_KEY) {
     openFavoritesView();
     setActiveAlbumIcon(key);
     return;
   }
+  if (key === SPECIAL_RELIZ_KEY) {
+    openRelizView(); // «НОВОСТИ»
+    setActiveAlbumIcon(key);
+    return;
+  }
 
-  // Обычный альбом: переключаемся как через select
+  // Неопределённый ключ — попробуем резолвить из data-icon
+  if (!key || key === '__unknown__') {
+    // Если вдруг у элемента был только псевдоключ — попробуем достать реальный по активному
+    const real = resolveRealAlbumKey(key);
+    if (real) key = real;
+  }
+
+  // Повторный тап по активной иконке: скрыть/показать галерею
+  if (viewMode === 'album' && key === currentAlbumKey) {
+    if (key !== SPECIAL_FAVORITES_KEY && key !== SPECIAL_RELIZ_KEY) {
+      const current = !!coverCollapsedMap[key];
+      setCoverWrapVisible(!current);
+      coverCollapsedMap[key] = current ? false : true;
+      try { localStorage.setItem('coverCollapsedMap', JSON.stringify(coverCollapsedMap)); } catch {}
+    }
+    return;
+  }
+
+  // Переключаем альбом как через select
   const meta = albumMetaByKey(key);
-  if (!meta) { NotificationSystem.error('Альбом не найден'); return; }
+  if (!meta) { 
+    NotificationSystem.error('Альбом не найден');
+    return;
+  }
+
   viewMode = 'album';
   clearRelizView();
   document.getElementById('track-list').style.display = '';
   document.getElementById('cover-wrap').style.display = '';
+
   const sel = document.getElementById('album-select');
   if (sel) sel.value = key;
+
   setActiveAlbumIcon(key);
+
   loadAlbumByKey(key).then(()=>{
     setCoverWrapVisible(!coverCollapsedMap[key]);
   });
