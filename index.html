@@ -684,8 +684,12 @@ function resolveRealAlbumKey(iconKey) {
 }
 
 /* ====== Виртуальный альбом «ИЗБРАННОЕ» ====== */
-let favoritesModel = null;          // массив треков избранного (виртуальный плейлист)
-let favoritesShuffledPlaylist = []; // на будущее
+/* Старое favoritesModel (только лайкнутые) больше не используем как базу альбома.
+   Теперь у нас «альбом» — это список ссылок refs (в т.ч. НЕактивные треки остаются в списке),
+   а для воспроизведения и UI строим полную модель favoritesRefsModel. */
+let favoritesModel = null;          // оставляем для обратной совместимости (не используется для списка)
+let favoritesRefsModel = null;      // полноценная модель "ИЗБРАННОЕ" (все refs, включая серые)
+let favoritesShuffledPlaylist = []; // на будущее (shuffle для «ИЗБРАННОЕ»)
 let favoritesShuffleIndex = 0;      // на будущее
 
 // Кэш конфигов альбомов (единый на всё приложение)
@@ -712,7 +716,7 @@ function getLikedForAlbumKey(key) { return getLikedForAlbum(key); }
 function getLikedForPlayback() { return getLikedForAlbum(playingAlbumKey); }
 function isLikedInPlayback(idx) {
   if (playingAlbumKey === SPECIAL_FAVORITES_KEY) {
-    const ref = favoritesModel?.[idx];
+    const ref = favoritesRefsModel?.[idx];
     return ref ? getLikedForAlbum(ref.__a).includes(ref.__t) : false;
   }
   return getLikedForAlbum(playingAlbumKey).includes(idx);
@@ -1212,115 +1216,167 @@ function ensureFavoritesRefsWithLikes(){
   writeFavoritesRefs(refs);
   return refs;
 }
-
-async function openFavoritesView(){
-  viewMode = 'favorites';
-  clearRelizView();
-  setActiveAlbumIcon(SPECIAL_FAVORITES_KEY);
-  // скрываем обложку
-  const cw = document.getElementById('cover-wrap'); if (cw) cw.style.display = 'none';
-
-  // Синхронизируем refs с актуальными лайками
-  const refs = ensureFavoritesRefsWithLikes();
-
-  // Сортировка по порядку альбомов в ICON_ALBUMS_ORDER (без спец-ключей)
+/* Отсортировать refs так же, как мы показываем их в UI (по порядку ICON_ALBUMS_ORDER, затем по индексу) */
+function getSortedFavoritesRefs() {
+  const refs = ensureFavoritesRefsWithLikes().slice();
   const order = ICON_ALBUMS_ORDER.map(x=>x.key).filter(k=>k!==SPECIAL_FAVORITES_KEY && k!==SPECIAL_RELIZ_KEY);
   const orderMap = new Map(order.map((k,i)=>[k,i]));
   refs.sort((r1,r2)=>{
     const o1 = orderMap.has(r1.a) ? orderMap.get(r1.a) : 999;
     const o2 = orderMap.has(r2.a) ? orderMap.get(r2.a) : 999;
-    if (o1!==o2) return o1-o2;
+    if (o1 !== o2) return o1 - o2;
     return (r1.t - r2.t);
   });
+  return refs;
+}
 
-  // Рендер листа
-  const list = document.getElementById('track-list');
-  list.style.display = '';
-  list.innerHTML = '<div style="text-align:center; opacity:.8; margin:6px 0 8px 0;">ИЗБРАННЫЕ ПЕСНИ</div>';
-  let num = 1;
-  for (const ref of refs){
+/* Построить полную модель «ИЗБРАННОЕ» на основе refs:
+   каждая запись содержит: аудио/лирику/фуллтекст + метаданные + флаг __active (есть ли жёлтая звезда сейчас) */
+async function buildFavoritesRefsModel() {
+  const sortedRefs = getSortedFavoritesRefs();
+  const out = [];
+  for (const ref of sortedRefs) {
     const cfg = await getAlbumConfigByKey(ref.a);
     const tr = cfg?.tracks?.[ref.t];
     if (!tr) continue;
     const active = getLikedForAlbum(ref.a).includes(ref.t);
-    const n = String(num++).padStart(2,'0');
+    out.push({
+      title: tr.title,
+      audio: tr.audio,
+      lyrics: tr.lyrics,
+      fulltext: tr.fulltext || null,
+      __a: ref.a,                // исходный альбом
+      __t: ref.t,                // индекс трека в исходном альбоме
+      __artist: cfg.artist || 'Витрина Разбита',
+      __album: cfg.albumName || 'Альбом',
+      __active: active           // есть ли лайк (жёлтая звезда) сейчас
+    });
+  }
+  favoritesRefsModel = out;
+  return out;
+}
+
+/* Утилита: обновить флаг активности в favoritesRefsModel для заданного ref */
+function updateFavoritesRefsModelActiveFlag(albumKey, trackIndex, isActive) {
+  if (!Array.isArray(favoritesRefsModel)) return;
+  const item = favoritesRefsModel.find(x => x.__a === albumKey && x.__t === trackIndex);
+  if (item) item.__active = !!isActive;
+}
+
+async function openFavoritesView(){
+  viewMode = 'favorites';
+  clearRelizView();
+  setActiveAlbumIcon(SPECIAL_FAVORITES_KEY);
+
+  // скрываем обложку (у «ИЗБРАННОГО» нет собственной)
+  const cw = document.getElementById('cover-wrap'); if (cw) cw.style.display = 'none';
+
+  // Плеер (если играет другой альбом) не трогаем — он уйдёт в мини‑режим
+  applyMiniModeUI();
+
+  // Строим модель ИЗБРАННОГО (все refs, включая неактивные)
+  await buildFavoritesRefsModel();
+
+  const list = document.getElementById('track-list');
+  list.style.display = '';
+  list.innerHTML = '<div style="text-align:center; opacity:.8; margin:6px 0 8px 0;">ИЗБРАННЫЕ ПЕСНИ</div>';
+
+  // Рендер строк
+  (favoritesRefsModel || []).forEach((item, idx) => {
+    const n = String(idx + 1).padStart(2,'0');
     const row = document.createElement('div');
-    row.className = 'track' + (active ? '' : ' inactive');
-    row.id = `fav_${ref.a}_${ref.t}`;
+    row.className = 'track' + (item.__active ? '' : ' inactive');
+    row.id = `fav_${item.__a}_${item.__t}`;
+    // Однострочно: "№. Название — Название Альбома" (альбом в полутоне), ellipsis уже есть в .track-title
     row.innerHTML = `
       <span class="tnum">${n}.</span>
-      <span class="track-title">${tr.title} <span style="opacity:.6;font-size:.9em;">— ${cfg.artist||'Витрина Разбита'}</span></span>
-      <img src="${active ? 'img/star.png' : 'img/star2.png'}" class="like-star" alt="звезда"
-           title="${active ? 'Снять из избранного' : 'Вернуть в избранное'}">
+      <span class="track-title" title="${item.title} — ${item.__album}">
+        ${item.title} <span style="opacity:.6;font-size:.9em;">— ${item.__album}</span>
+      </span>
+      <img src="${item.__active ? 'img/star.png' : 'img/star2.png'}" class="like-star" alt="звезда"
+           title="${item.__active ? 'Снять из избранного' : 'Вернуть в избранное'}">
     `;
-    // клик по строке — запускаем ИЗБРАННОЕ как виртуальный альбом
+
+    // Клик по строке:
+    // - если трек активен (жёлтая звезда) — запустить ИЗБРАННОЕ как полноценный альбом с этим индексом
+    // - если трек неактивен (серый) — показать модалку «Добавить в ⭐ / Удалить»
     row.addEventListener('click', async ()=>{
-      if (!Array.isArray(favoritesModel)) await buildFavoritesModel();
-      const i = favoritesModel.findIndex(x => x.__a === ref.a && x.__t === ref.t);
-      ensureFavoritesPlayback(i >= 0 ? i : 0);
+      if (item.__active) {
+        ensureFavoritesPlayback(idx);
+      } else {
+        showFavInactivePrompt({ a: item.__a, t: item.__t, title: item.title, album: item.__album });
+      }
     });
 
-  
-    // клик по звезде
+    // Клик по звезде — переключаем лайк в исходном альбоме, остаёмся на месте
     row.querySelector('.like-star').addEventListener('click', (e)=>{
       e.stopPropagation();
-      const curActive = getLikedForAlbum(ref.a).includes(ref.t);
+      const curActive = getLikedForAlbum(item.__a).includes(item.__t);
       if (curActive) {
-        toggleLikeForAlbum(ref.a, ref.t, false);
-        updateFavRow(ref, false);
+        // снимаем лайк
+        toggleLikeForAlbum(item.__a, item.__t, false);
+        updateFavRow({a:item.__a,t:item.__t}, false);
+        updateFavoritesRefsModelActiveFlag(item.__a, item.__t, false);
         NotificationSystem.info('Трек снят из избранного');
       } else {
-        toggleLikeForAlbum(ref.a, ref.t, true);
-        updateFavRow(ref, true);
+        // возвращаем лайк
+        toggleLikeForAlbum(item.__a, item.__t, true);
+        updateFavRow({a:item.__a,t:item.__t}, true);
+        updateFavoritesRefsModelActiveFlag(item.__a, item.__t, true);
         NotificationSystem.success('Трек возвращён в избранное');
       }
     });
 
     list.appendChild(row);
-  }
+  });
 
-  // Уберём фильтр “только избранные” для списка — он относится к обычному альбому
+  // Фильтр списка «по звёздам» выключаем при входе (как и для обычного альбома)
   list.classList.remove('filtered');
 }
+
 async function ensureFavoritesPlayback(startIndex){
-  // 1) Соберём модель
-  if (!Array.isArray(favoritesModel)) await buildFavoritesModel();
-  if (!favoritesModel || favoritesModel.length === 0) {
+  // 1) Строим модель ИЗБРАННОГО (если ещё нет)
+  if (!Array.isArray(favoritesRefsModel)) await buildFavoritesRefsModel();
+  if (!favoritesRefsModel || favoritesRefsModel.length === 0) {
     NotificationSystem.warning('В избранном нет треков');
     return;
   }
-  const idx = Math.max(0, Math.min(startIndex|0, favoritesModel.length-1));
+  const idx = Math.max(0, Math.min(startIndex|0, favoritesRefsModel.length-1));
 
-  // 2) Зафиксируем контекст «играющего» альбома как ИЗБРАННОЕ
+  // 2) Зафиксируем контекст «играющего» альбома как ИЗБРАННОЕ (полноценный альбом)
   playingAlbumKey = SPECIAL_FAVORITES_KEY;
-  playingTracks = favoritesModel;
+  playingTracks = favoritesRefsModel;       // ВНИМАНИЕ: теперь играем по refs‑модели (включая серые)
   playingArtist = 'Витрина Разбита';
   playingAlbumName = 'ИЗБРАННОЕ';
-  playingCover = 'img/star.png'; // при желании поставьте отдельный значок
+  playingCover = 'img/star.png';
 
-  // 3) Поставим текущий индекс
+  // 3) Текущий индекс
   currentTrack = idx;
   playingTrack = idx;
 
-  // 4) Вставим плейер внутрь списка избранного: создадим плейсхолдер и переместим блок
+  // 4) Плейер располагаем под выбранной строкой «ИЗБРАННОЕ»
   const list = document.getElementById('track-list');
   if (list) {
-    // Уберём возможный старый плейсхолдер
-    const oldPh = list.querySelector('#lyricsplayerblock');
-    if (!oldPh) {
-      const ph = document.createElement('div');
+    // плейсхолдер под плеер
+    let ph = list.querySelector('#lyricsplayerblock');
+    if (!ph) {
+      ph = document.createElement('div');
       ph.className = 'lyrics-player-block';
       ph.id = 'lyricsplayerblock';
-      // Вставим сразу под выбранной строкой
-      const row = list.querySelectorAll('.track')[idx];
+      const row = list.querySelectorAll('.track')[idx+1]; // первая строка в списке — заголовок, поэтому +1
       if (row && row.nextSibling) row.parentNode.insertBefore(ph, row.nextSibling); else list.appendChild(ph);
+    } else {
+      // переместим под нужную строку
+      const row = list.querySelectorAll('.track')[idx+1];
+      if (row && row.nextSibling && ph !== row.nextSibling) {
+        row.parentNode.insertBefore(ph, row.nextSibling);
+      }
     }
-    // Если плеер в now-playing — перенесём в плейсхолдер
+    // Если плеер был в now-playing — переносим
     const holder = document.getElementById('now-playing');
     const lp = holder?.querySelector('#lyricsplayerblock');
-    const ph2 = list.querySelector('#lyricsplayerblock');
-    if (lp && ph2 && lp !== ph2) {
-      ph2.replaceWith(lp);
+    if (lp && ph && lp !== ph) {
+      ph.replaceWith(lp);
       holder.innerHTML = '';
     }
   }
@@ -1334,7 +1390,7 @@ async function ensureFavoritesPlayback(startIndex){
   const a = document.getElementById('audio');
   if (!a) return;
   stopAndCleanupAudio(a);
-  const tr = favoritesModel[idx];
+  const tr = favoritesRefsModel[idx];
   a.src = tr.audio;
 
   loadLyrics(tr.lyrics);
@@ -1371,58 +1427,80 @@ function toggleLikeForAlbum(albumKey, idx, makeLiked){
   try { localStorage.setItem(LIKED_STORAGE_KEY_V2, JSON.stringify(map)); } catch {}
 }
 
-function showFavActionMenu(ref){
+/* Клик по неактивной строке в «ИЗБРАННОМ»: диалог с «Добавить в ⭐ / Удалить» */
+function showFavInactivePrompt(ref){
   const modal = document.createElement('div');
   modal.className = 'modal-bg active';
   modal.innerHTML = `
-    <div class="modal-feedback" style="max-width: 360px;">
+    <div class="modal-feedback" style="max-width: 380px;">
       <button class="bigclose" onclick="this.closest('.modal-bg').remove()" title="Закрыть">
         <svg viewBox="0 0 48 48"><line x1="12" y1="12" x2="36" y2="36" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="36" y1="12" x2="12" y2="36" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg>
       </button>
-      <div style="font-weight:700; margin-bottom:10px;">Действие с треком</div>
-      <div style="opacity:.8; margin-bottom:12px;">Вернуть песню в избранное или удалить из списка “Избранное”?</div>
-      <div style="display:flex; gap:10px; justify-content:center;">
-        <button class="offline-btn online" style="min-width:120px;" id="fav-return-btn">Вернуть</button>
-        <button class="offline-btn" style="min-width:120px;" id="fav-delete-btn">Удалить</button>
+      <div style="font-weight:700; margin-bottom:10px;">Трек неактивен</div>
+      <div style="opacity:.8; margin-bottom:14px;">
+        Если хотите снова слушать трек в «ИЗБРАННОМ» — добавьте его в избранное.
+        Либо удалите из этого списка.
+      </div>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <button class="offline-btn online" style="min-width:140px;" id="fav-add-btn">Добавить в ⭐</button>
+        <button class="offline-btn" style="min-width:140px;" id="fav-del-btn">Удалить</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
-  modal.querySelector('#fav-return-btn').onclick = ()=>{
+
+  modal.querySelector('#fav-add-btn').onclick = ()=>{
     toggleLikeForAlbum(ref.a, ref.t, true);
     updateFavRow(ref, true);
+    updateFavoritesRefsModelActiveFlag(ref.a, ref.t, true);
     modal.remove();
+    NotificationSystem.success('Добавлено в избранное');
   };
-  modal.querySelector('#fav-delete-btn').onclick = ()=>{
+  modal.querySelector('#fav-del-btn').onclick = ()=>{
     modal.remove();
     showFavDeleteConfirm(ref);
   };
 }
 
+/* Подтверждение удаления из «ИЗБРАННОГО» */
 function showFavDeleteConfirm(ref){
   const modal = document.createElement('div');
   modal.className = 'modal-bg active';
   modal.innerHTML = `
-    <div class="modal-feedback" style="max-width: 360px;">
+    <div class="modal-feedback" style="max-width: 390px;">
       <button class="bigclose" onclick="this.closest('.modal-bg').remove()" title="Закрыть">
         <svg viewBox="0 0 48 48"><line x1="12" y1="12" x2="36" y2="36" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="36" y1="12" x2="12" y2="36" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg>
       </button>
-      <div style="font-weight:700; margin-bottom:10px;">Удалить из “Избранного”</div>
-      <div style="opacity:.8; margin-bottom:12px;">Трек будет удалён только из списка “Избранное”. Чтобы добавить его снова, отметьте песню в исходном альбоме звёздочкой.</div>
+      <div style="font-weight:700; margin-bottom:10px;">Удалить из «ИЗБРАННОГО»?</div>
+      <div style="opacity:.8; margin-bottom:12px;">
+        Если вы удалите трек, он исчезнет из списка «ИЗБРАННОЕ», но вы всегда сможете найти его в исходном альбоме.
+      </div>
       <div style="display:flex; gap:10px; justify-content:center;">
         <button class="offline-btn" style="min-width:120px;" id="fav-del-cancel">Отмена</button>
         <button class="offline-btn online" style="min-width:120px;" id="fav-del-apply">Удалить</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
+
   modal.querySelector('#fav-del-cancel').onclick = ()=> modal.remove();
   modal.querySelector('#fav-del-apply').onclick = ()=>{
     // удаляем ссылку из персист-листа
     const refs = readFavoritesRefs().filter(x=> !(x.a===ref.a && x.t===ref.t));
     writeFavoritesRefs(refs);
-    // из DOM — строку убрать
+
+    // обновим модель и DOM
     document.getElementById(`fav_${ref.a}_${ref.t}`)?.remove();
+    if (Array.isArray(favoritesRefsModel)) {
+      favoritesRefsModel = favoritesRefsModel.filter(x => !(x.__a === ref.a && x.__t === ref.t));
+      // перенумерация номеров слева (tnum)
+      const rows = document.querySelectorAll('#track-list .track');
+      rows.forEach((row, i) => {
+        const tnum = row.querySelector('.tnum');
+        if (tnum) tnum.textContent = `${String(i + 1).padStart(2,'0')}.`;
+      });
+    }
+
     modal.remove();
-    NotificationSystem.success('Удалено из “Избранного”');
+    NotificationSystem.success('Удалено из «ИЗБРАННОГО»');
   };
 }
 
@@ -1734,9 +1812,9 @@ function toggleLikePlaying() {
   let albumForLike = playingAlbumKey;
   let indexForLike = playingTrack;
 
-  // В виртуальном альбоме лайк относится к исходному альбому/индексу
+  // В «ИЗБРАННОМ» лайк относится к исходному альбому/индексу
   if (playingAlbumKey === SPECIAL_FAVORITES_KEY) {
-    const ref = favoritesModel?.[playingTrack];
+    const ref = favoritesRefsModel?.[playingTrack];
     if (!ref) return;
     albumForLike = ref.__a;
     indexForLike = ref.__t;
@@ -1749,41 +1827,86 @@ function toggleLikePlaying() {
   map[albumForLike] = Array.from(new Set(next));
   try { localStorage.setItem(LIKED_STORAGE_KEY_V2, JSON.stringify(map)); } catch {}
 
-  // Обновим звездочки (мини-шапка + строка в «Избранном», если есть)
+  // Обновим UI: мини-шапка
   updateMiniNowHeader();
-  const favRow = document.getElementById(`fav_${albumForLike}_${indexForLike}`);
-  if (favRow) {
-    favRow.classList.toggle('inactive', was); // если сняли лайк — сделать серой
-    const s = favRow.querySelector('.like-star');
-    if (s) { s.src = was ? 'img/star2.png' : 'img/star.png'; s.title = was ? 'Вернуть в избранное' : 'Снять из избранного'; }
-  }
 
-  // Favorites Only: если включён — перестроим плейлист / shuffle
-  if (favoritesOnlyMode) {
-    if (playingAlbumKey === SPECIAL_FAVORITES_KEY) {
-      // модель «избранного» могла измениться — пересоберём
-      buildFavoritesModel().then(()=>{
-        if (shuffleMode) createPlayingShuffledPlaylist();
-        updateNextUpLabel();
-      });
-    } else {
-      updateAvailableTracks();
-      if (shuffleMode) createPlayingShuffledPlaylist();
+  // Если в «ИЗБРАННОМ»: обновим флаг активности модели и строку списка
+  if (playingAlbumKey === SPECIAL_FAVORITES_KEY) {
+    updateFavoritesRefsModelActiveFlag(albumForLike, indexForLike, !was);
+    const favRow = document.getElementById(`fav_${albumForLike}_${indexForLike}`);
+    if (favRow) {
+      favRow.classList.toggle('inactive', was);
+      const s = favRow.querySelector('.like-star');
+      if (s) { s.src = was ? 'img/star2.png' : 'img/star.png'; s.title = was ? 'Вернуть в избранное' : 'Снять из избранного'; }
     }
   } else {
-    if (playingAlbumKey === SPECIAL_FAVORITES_KEY && shuffleMode) createPlayingShuffledPlaylist();
+    // Обычный альбом: если соответствующая строка в «ИЗБРАННОМ» отображается — тоже обновим
+    const favRow = document.getElementById(`fav_${albumForLike}_${indexForLike}`);
+    if (favRow) {
+      favRow.classList.toggle('inactive', was);
+      const s = favRow.querySelector('.like-star');
+      if (s) { s.src = was ? 'img/star2.png' : 'img/star.png'; s.title = was ? 'Вернуть в избранное' : 'Снять из избранного'; }
+    }
+  }
+
+  // Перестроение доступного плейлиста при включенном Favorites Only
+  if (favoritesOnlyMode) {
+    if (shuffleMode) createPlayingShuffledPlaylist();
+    updateNextUpLabel();
+  } else {
+    if (shuffleMode) createPlayingShuffledPlaylist();
+    updateNextUpLabel();
   }
 }
 
 function updateFavoriteClasses() {
+  // Обычный альбом
   const liked = getLiked();
   document.querySelectorAll('.track').forEach(tr => tr.classList.remove('is-favorite'));
   liked.forEach(idx => { const el = document.getElementById(`trk${idx}`); if (el) el.classList.add('is-favorite'); });
 }
 
+/* Специально для списка «ИЗБРАННОЕ»: отмечаем .is-favorite только активные строки */
+function updateFavoriteClassesFavorites() {
+  if (!Array.isArray(favoritesRefsModel)) return;
+  // снять метки
+  document.querySelectorAll('#track-list .track').forEach(tr => tr.classList.remove('is-favorite'));
+  favoritesRefsModel.forEach((item, i) => {
+    if (item.__active) {
+      const el = document.getElementById(`fav_${item.__a}_${item.__t}`);
+      if (el) el.classList.add('is-favorite');
+    }
+  });
+}
+
 function toggleFavoritesFilter() {
   const btn = document.getElementById('filter-favorites-btn');
   const list = document.getElementById('track-list');
+
+  // Если мы в «ИЗБРАННОМ» — фильтруем по __active
+  if (viewMode === 'favorites') {
+    favoritesFilterActive = !favoritesFilterActive;
+    if (favoritesFilterActive) {
+      // Проверим, есть ли активные
+      const anyActive = (favoritesRefsModel || []).some(x => x.__active);
+      if (!anyActive) {
+        favoritesFilterActive = false;
+        NotificationSystem.warning('Нет активных треков со ⭐!');
+        return;
+      }
+      btn.textContent = 'ПОКАЗАТЬ ВСЕ ПЕСНИ';
+      btn.classList.add('filtered');
+      list.classList.add('filtered');
+      updateFavoriteClassesFavorites();
+    } else {
+      btn.textContent = 'Скрыть не отмеченные ⭐ песни';
+      btn.classList.remove('filtered');
+      list.classList.remove('filtered');
+    }
+    return;
+  }
+
+  // Обычный альбом
   const liked = getLiked();
   favoritesFilterActive = !favoritesFilterActive;
   if (favoritesFilterActive) {
@@ -2002,16 +2125,23 @@ function renderLyrics(time) {
 }
 function renderLyricsEnhanced(t){ if (lyricsViewMode==='hidden') return; renderLyrics(t); }
 function copyLyrics(){
-  if (!config || currentTrack<0 || !config.tracks[currentTrack].fulltext) { NotificationSystem.warning('Файл с текстом не найден!'); return; }
-  fetch(config.tracks[currentTrack].fulltext).then(r=>r.text()).then(txt=>{
-    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(txt).then(()=>NotificationSystem.success('Текст скопирован!'),()=>NotificationSystem.error('Не удалось скопировать'));
-    else {
+  const pc = getPlayerConfig();
+  const idx = (typeof playingTrack === 'number' && playingTrack >= 0) ? playingTrack : currentTrack;
+  if (!pc || !pc.tracks || idx < 0 || !pc.tracks[idx] || !pc.tracks[idx].fulltext) { 
+    NotificationSystem.warning('Файл с текстом не найден!');
+    return;
+  }
+  fetch(pc.tracks[idx].fulltext).then(r=>r.text()).then(txt=>{
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(txt).then(()=>NotificationSystem.success('Текст скопирован!'),()=>NotificationSystem.error('Не удалось скопировать'));
+    } else {
       const ta=document.createElement('textarea'); ta.value=txt; document.body.appendChild(ta); ta.select();
       try { document.execCommand('copy'); NotificationSystem.success('Текст скопирован!'); } catch { NotificationSystem.error('Не удалось скопировать'); }
       document.body.removeChild(ta);
     }
   }).catch(()=> NotificationSystem.error('Не удалось загрузить текст!'));
 }
+
 function toggleLyricsView(){
   const modes=['normal','hidden','expanded'];
   lyricsViewMode = modes[(modes.indexOf(lyricsViewMode)+1)%modes.length];
@@ -2189,68 +2319,49 @@ function toggleShuffle(){
 }
 
 function toggleFavoritesOnly(){
-  const inOther = isBrowsingOtherAlbum();
-  const liked = inOther ? getLikedForAlbum(playingAlbumKey) : getLiked();
-  // Если играет альбом ИЗБРАННОЕ — этот переключатель не имеет смысла
-  if (playingAlbumKey === SPECIAL_FAVORITES_KEY) {
-    NotificationSystem.info('Играет альбом ИЗБРАННОЕ');
-    return;
-  }
-  if (!liked.length) { NotificationSystem.warning('Нет избранных треков!'); return; }
-
-  favoritesOnlyMode = !favoritesOnlyMode;
   const btn = document.getElementById('favorites-btn');
   const icon = document.getElementById('favorites-btn-icon');
 
+  favoritesOnlyMode = !favoritesOnlyMode;
   if (favoritesOnlyMode) {
     btn && btn.classList.add('favorites-active');
     if (icon) icon.src = 'img/star.png';
-    NotificationSystem.success(`⭐ Только избранные (${liked.length})`);
-
-    if (inOther) {
-      // если текущий трек не в избранных играющего альбома — перейти к первому из избранных
-      if (!getLikedForAlbum(playingAlbumKey).includes(playingTrack)) {
-        const first = getLikedForAlbum(playingAlbumKey)[0];
-        if (typeof first === 'number') playFromPlaybackAlbum(first, true);
-      }
-      if (shuffleMode) createPlayingShuffledPlaylist();
-    } else {
-      favoritesFilterActive = true;
-      const filterBtn = document.getElementById('filter-favorites-btn');
-      const list = document.getElementById('track-list');
-      filterBtn && filterBtn.classList.add('filtered');
-      if (filterBtn) filterBtn.textContent = 'ПОКАЗАТЬ ВСЕ ПЕСНИ';
-      list && list.classList.add('filtered');
-      updateFavoriteClasses();
-      updateAvailableTracks();
-      if (!isLiked(currentTrack)) {
-        const n = getNextFavoriteTrack();
-        if (n !== -1) showTrack(n, true);
-      }
-      if (shuffleMode) createShuffledPlaylist();
-    }
+    NotificationSystem.success('⭐ Только избранные');
   } else {
     btn && btn.classList.remove('favorites-active');
     if (icon) icon.src = 'img/star2.png';
+    NotificationSystem.info('Играют все треки');
+  }
+  localStorage.setItem('favoritesOnlyMode', favoritesOnlyMode ? '1' : '0');
 
-    if (inOther) {
-      if (shuffleMode) createPlayingShuffledPlaylist();
-      NotificationSystem.info('Играют все треки');
+  // Если мы в ИЗБРАННОМ (просмотр или воспроизведение) — фильтр работает для списка и для доступных треков
+  if (viewMode === 'favorites') {
+    const list = document.getElementById('track-list');
+    const filterBtn = document.getElementById('filter-favorites-btn');
+    favoritesFilterActive = favoritesOnlyMode;
+    if (favoritesFilterActive) {
+      filterBtn && filterBtn.classList.add('filtered');
+      if (filterBtn) filterBtn.textContent = 'ПОКАЗАТЬ ВСЕ ПЕСНИ';
+      list && list.classList.add('filtered');
+      updateFavoriteClassesFavorites();
     } else {
-      favoritesFilterActive = false;
-      const filterBtn = document.getElementById('filter-favorites-btn');
-      const list = document.getElementById('track-list');
       filterBtn && filterBtn.classList.remove('filtered');
       if (filterBtn) filterBtn.textContent = 'Скрыть не отмеченные ⭐ песни';
       list && list.classList.remove('filtered');
-      updateAvailableTracks();
-      NotificationSystem.info('Играют все треки');
-      if (shuffleMode) createShuffledPlaylist();
     }
   }
 
-  localStorage.setItem('favoritesOnlyMode', favoritesOnlyMode ? '1' : '0');
-  updateNextUpLabel();
+  // Пересобрать доступные треки для играющего контекста
+  if (playingAlbumKey) {
+    if (isBrowsingOtherAlbum() || playingAlbumKey === SPECIAL_FAVORITES_KEY) {
+      if (shuffleMode) createPlayingShuffledPlaylist();
+      updateNextUpLabel();
+    } else {
+      updateAvailableTracks();
+      if (shuffleMode) createShuffledPlaylist();
+      updateNextUpLabel();
+    }
+  }
 }
 
 function updateAvailableTracks(){
@@ -2381,10 +2492,20 @@ function createShuffledPlaylist(){
 /* ====== Вспомогательные — для играющего альбома ====== */
 function getAvailableTracksForAlbum(albumKey, tracksLen) {
   if (!tracksLen || tracksLen <= 0) return [];
+
   if (albumKey === SPECIAL_FAVORITES_KEY) {
-    // Виртуальный альбом «ИЗБРАННОЕ» играет все позиции своей модели
-    return Array.from({length: tracksLen}, (_,i)=>i);
+    // В «ИЗБРАННОМ»: 
+    // - если включён режим "только ⭐" — берём ТОЛЬКО активные (__active)
+    // - иначе — все позиции (и активные, и серые)
+    if (!Array.isArray(favoritesRefsModel)) return [];
+    const allIdx = Array.from({length: favoritesRefsModel.length}, (_,i)=>i);
+    if (!favoritesOnlyMode) return allIdx;
+    const activeIdx = [];
+    favoritesRefsModel.forEach((x, i) => { if (x.__active) activeIdx.push(i); });
+    return activeIdx.length ? activeIdx : allIdx;
   }
+
+  // Обычные альбомы
   if (favoritesOnlyMode) {
     const liked = getLikedForAlbum(albumKey).filter(n => Number.isInteger(n) && n >= 0 && n < tracksLen);
     return liked.length ? liked : Array.from({length: tracksLen}, (_,i)=>i);
@@ -2561,7 +2682,7 @@ async function openPlayingAlbumFromMini(e) {
   if (playingAlbumKey === SPECIAL_FAVORITES_KEY) {
     openFavoritesView();
     // Прокрутим к текущему треку
-    const cur = favoritesModel?.[playingTrack];
+    const cur = favoritesRefsModel?.[playingTrack];
     if (cur) {
       setTimeout(() => {
         document.getElementById(`fav_${cur.__a}_${cur.__t}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
