@@ -641,6 +641,7 @@ let __currentAudio = null;
 /* Временное скрытие лирики при мини‑режиме */
 let __wasMini = false;
 let __savedLyricsModeForMini = null;  // 'normal' | 'hidden' | 'expanded' или null
+let __savedAnimationForMini = null;    // true | false | null — временное хранение анимации лирики для мини‑режима
 /* ====== Альбомные иконки / спец-режимы ====== */
 const SPECIAL_FAVORITES_KEY = '__favorites__';
 const SPECIAL_RELIZ_KEY = '__reliz__'; // оставляем ключ совместимости
@@ -2785,14 +2786,61 @@ function applyMiniModeUI() {
   const lp = document.getElementById('lyricsplayerblock');
   if (!lp) return;
 
-  // Мини-режим для случая "играет один альбом, а смотрим другой".
-  // Исключение: если смотрим «ИЗБРАННОЕ» и играет «ИЗБРАННОЕ» — это НЕ мини-режим.
+  // Мини-режим: когда играет один контекст, а просматриваем другой.
+  // Исключение: если смотрим «ИЗБРАННОЕ» и играет «ИЗБРАННОЕ» — мини‑режим НЕ включаем.
   const inMini = (function(){
     if (viewMode === 'favorites' && playingAlbumKey === SPECIAL_FAVORITES_KEY) return false;
     return isBrowsingOtherAlbum();
   })();
 
+  // Применяем/снимаем CSS‑флаг мини‑режима
   if (inMini) lp.classList.add('mini-mode'); else lp.classList.remove('mini-mode');
+
+  // Управление лирикой и анимацией при входе/выходе из мини‑режима:
+  // - при входе: спрятать окно лирики (если было видно) и временно выключить анимацию;
+  // - при выходе: восстановить прежний режим лирики и анимации.
+  try {
+    // ВХОД в мини‑режим
+    if (inMini) {
+      if (!__wasMini) __wasMini = true;
+
+      // 1) Если лирика видима (не hidden) — запомним режим и скроем.
+      if (__savedLyricsModeForMini === null && lyricsViewMode !== 'hidden') {
+        __savedLyricsModeForMini = lyricsViewMode; // 'normal' или 'expanded'
+      }
+      if (lyricsViewMode !== 'hidden') {
+        lyricsViewMode = 'hidden';
+        applyLyricsViewMode();
+      }
+
+      // 2) Если анимация лирики включена — запомним и временно выключим (без уведомлений и без LocalStorage)
+      if (__savedAnimationForMini === null && animationEnabled === true) {
+        __savedAnimationForMini = true;
+      }
+      if (animationEnabled === true) {
+        applyAnimationState(false);
+      }
+    }
+    // ВЫХОД из мини‑режима
+    else {
+      if (__wasMini) __wasMini = false;
+
+      // 1) Вернём прежний режим лирики (если был сохранён)
+      if (__savedLyricsModeForMini !== null) {
+        lyricsViewMode = __savedLyricsModeForMini; // вернуть 'normal' или 'expanded'
+        __savedLyricsModeForMini = null;
+        applyLyricsViewMode();
+      }
+
+      // 2) Вернём прежнее состояние анимации (если было сохранено)
+      if (__savedAnimationForMini !== null) {
+        applyAnimationState(!!__savedAnimationForMini);
+        __savedAnimationForMini = null;
+      }
+    }
+  } catch(e) {
+    // молча игнорируем, чтобы не ломать UX
+  }
 
   updateMiniNowHeader();
   updateNextUpLabel();
@@ -3303,6 +3351,25 @@ function restorePlayerButtonsState() {
 }
 
 /* ====== Анимации/пульсация ====== */
+// ТИХОЕ применение состояния анимации лирики без уведомлений и без записи в localStorage.
+// Нужна для временного отключения/восстановления анимации при мини‑режиме.
+function applyAnimationState(enabled) {
+  animationEnabled = !!enabled;
+  const btn = document.getElementById('animation-btn');
+  const bg  = document.querySelector('.lyrics-animated-bg');
+  const win = document.getElementById('lyrics-window');
+
+  if (animationEnabled) {
+    if (btn) btn.classList.add('animation-active');
+    if (bg)  bg.classList.add('active');
+    if (win) win.classList.add('animation-active');
+  } else {
+    if (btn) btn.classList.remove('animation-active');
+    if (bg)  bg.classList.remove('active');
+    if (win) win.classList.remove('animation-active');
+  }
+}
+
 function toggleAnimation(){
   animationEnabled=!animationEnabled;
   const btn=document.getElementById('animation-btn'), bg=document.querySelector('.lyrics-animated-bg'), win=document.getElementById('lyrics-window');
@@ -3317,6 +3384,7 @@ function toggleBit(){
   else { stopLogoPulsation(); try{ if (audioSource) audioSource.disconnect(); if (analyser) analyser.disconnect(); }catch{} analyser=null; audioSource=null; }
   localStorage.setItem('bitEnabled', bitEnabled?'1':'0');
 }
+
 function initAudioContext(){
   // 1) Контекст
   if (!audioContext) {
