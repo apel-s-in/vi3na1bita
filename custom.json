@@ -1,23 +1,17 @@
 {
   "items": [
     {
-      "type": "tgPost",
-      "title": "Свежий пост в Telegram",
-      "url": "https://t.me/vitrina_razbita/28",
-      "height": 480
-    },
-    {
-      "type": "yt",
-      "title": "YouTube Shorts",
-      "url": "https://youtube.com/shorts/yqswRhMhc48?feature=share",
-      "caption": "Короткое видео на нашем канале"
-    },
-    {
       "type": "ym",
       "title": "Исполнитель — Витрина Разбита",
       "subtitle": "Яндекс Музыка",
       "url": "https://music.yandex.ru/artist/24739002?utm_source=web&utm_medium=copy_link",
       "cover": ""
+    },
+    {
+      "type": "tgPost",
+      "title": "Свежий пост в Telegram",
+      "url": "https://t.me/vitrina_razbita/28",
+      "height": 480
     },
     {
       "type": "vkPlaylist",
