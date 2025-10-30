@@ -1153,55 +1153,52 @@ async function openRelizView(){
   // Переводим плеер в мини-режим (если играет)
   applyMiniModeUI();
 
-  // Пробуем собрать новости из соцсетей текущего альбома (или первого доступного)
-  try {
-    // Берём соцсети из текущего конфига, если есть
-    let socials = (config && Array.isArray(config.socials)) ? config.socials : [];
+  async function openRelizView(){
+    // UI: «Новости»
+    viewMode = 'reliz';
+    setActiveAlbumIcon(SPECIAL_RELIZ_KEY);
 
-    // Если соцсети пусты — попробуем первый альбом
-    if (!socials.length && albumsIndex.length) {
-      const firstKey = albumsIndex[0].key;
-      const cfg1 = await getAlbumConfigByKey(firstKey);
-      socials = Array.isArray(cfg1?.socials) ? cfg1.socials : [];
+    const list = document.getElementById('track-list');
+    const cw = document.getElementById('cover-wrap');
+    if (list) list.style.display = 'none';
+    if (cw) cw.style.display = 'none';
+
+    let cont = document.getElementById('reliz-container');
+    if (!cont) {
+      cont = document.createElement('div');
+      cont.id = 'reliz-container';
+      const header = document.querySelector('header');
+      header && header.insertAdjacentElement('afterend', cont);
     }
 
-    const embedBox = document.getElementById('news-embed');
-    const linksBox = document.getElementById('news-links');
+    // Встраиваем нашу страницу новостей (самостоятельная, авто‑адаптивная)
+    cont.innerHTML = `
+      <div class="embed-reliz" style="min-height:320px; color:#cfe3ff; padding:10px;">
+        <h2 style="margin:0 0 12px 0;">НОВОСТИ</h2>
+        <iframe id="news-iframe"
+                src="./news/index.html"
+                title="Новости — Витрина Разбита"
+                style="width:100%; min-height:600px; border:1px solid rgba(255,255,255,.1); border-radius:10px; background:#0b0e15;"
+                loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allow="encrypted-media; picture-in-picture; fullscreen"></iframe>
+      </div>`;
 
-    // Пытаемся встроить Телеграм-канал
-    const tg = socials.find(s => /t\.me\/[^/\s]+/i.test(String(s.url)));
-    if (tg) {
-      const m = String(tg.url).match(/t\.me\/([^/\s?]+)/i);
-      if (m && m[1]) {
-        const ch = m[1];
-        embedBox.innerHTML = `
-          <iframe src="https://t.me/s/${ch}?embed=1&locale=ru"
-                  style="width:100%; min-height:560px; border:1px solid rgba(255,255,255,.1); border-radius:10px;"
-                  allowtransparency="true" loading="lazy"></iframe>`;
-      }
-    } else {
-      embedBox.innerHTML = `<div style="opacity:.8;">Добавьте ссылку на канал Telegram в socials, чтобы мы встроили ленту. Пока что — ссылки ниже.</div>`;
-    }
+    // Переводим плеер в мини-режим (если играет)
+    applyMiniModeUI();
 
-    // Список ссылок на соцсети
-    if (socials.length) {
-      linksBox.innerHTML = `
-        <div style="opacity:.8; margin-bottom:8px;">Наши соцсети:</div>
-        <div style="display:flex; flex-direction:column; gap:6px;">
-          ${socials.map(s => `<a href="${s.url}" target="_blank" rel="noopener" style="color:#8ab8fd;">${s.title}</a>`).join('')}
-        </div>`;
-    } else {
-      linksBox.innerHTML = `<div style="opacity:.7;">Ссылки на соцсети не найдены.</div>`;
-    }
-  } catch (e) {
-    // Fallback: грузим reliz.html как было
+    // Слушаем сообщение о высоте контента от news/index.html и подгоняем iframe
     try {
-      const r = await fetch('./reliz.html', { cache: 'no-cache' });
-      const html = await r.text();
-      document.getElementById('news-embed').innerHTML = html;
-    } catch {
-      document.getElementById('news-embed').innerHTML = `<div style="padding:10px;">Не удалось загрузить «Новости»</div>`;
-    }
+      const iframe = document.getElementById('news-iframe');
+      function onNewsMessage(e){
+        const data = e && e.data;
+        if (!data || typeof data !== 'object') return;
+        if (data.type === 'news_height' && typeof data.height === 'number' && iframe) {
+          const safeH = Math.max(600, Math.min(5000, Math.round(data.height)));
+          iframe.style.minHeight = safeH + 'px';
+          iframe.style.height = safeH + 'px';
+        }
+      }
+      window.addEventListener('message', onNewsMessage);
+    } catch(e){}
   }
 }
 
