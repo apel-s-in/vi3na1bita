@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Новости — Витрина Разбита</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <style>
+    :root{
+      --primary-bg:#181818;
+      --card-bg:#1d2330;
+      --modal-bg:#252d39;
+      --border:#394866;
+      --text:#f2f2f2;
+      --muted:#9fb6d9;
+      --accent:#E80100;
+      --accent2:#4daaff;
+      --shadow: 0 6px 24px rgba(0,0,0,.35);
+      --radius: 14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; padding:12px 10px 20px 10px;
+      background:#0f1218; color:var(--text);
+      font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+    }
+
+    .news-wrap{max-width:400px; margin:0 auto;}
+    .headline{
+      display:flex; align-items:center; gap:10px;
+      margin:4px 0 10px 0;
+    }
+    .headline .logo{width:32px;height:32px;border-radius:8px; background:#111 url('../img/logo.png') center/cover no-repeat; flex:0 0 32px; box-shadow:var(--shadow);}
+    .headline h1{margin:0; font-size:18px; letter-spacing:.03em;}
+    .subnote{color:var(--muted); font-size:12px; margin:3px 0 12px 0;}
+
+    /* быстрая панель */
+    .quick-links{
+      display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 12px 0;
+    }
+    .btn{
+      appearance:none; border:none; cursor:pointer;
+      background: linear-gradient(135deg,#222a3b,#1a1f2d);
+      color:#cfe3ff; border:1px solid rgba(255,255,255,.12);
+      padding:9px 12px; border-radius:12px; font-weight:700; font-size:13px;
+      letter-spacing:.02em; text-decoration:none; display:inline-flex; align-items:center; gap:8px;
+      box-shadow:0 4px 14px rgba(0,0,0,.25);
+      transition: transform .12s ease, border-color .2s;
+    }
+    .btn:hover{ transform: translateY(-1px); border-color: var(--accent2); }
+    .btn svg{width:18px; height:18px; flex:0 0 18px;}
+
+    /* секции */
+    .section-title{
+      margin:14px 4px 10px 4px; font-weight:800; letter-spacing:.04em; font-size:13px; color:#8ab8fd; text-transform:uppercase;
+    }
+
+    /* карточки */
+    .card{
+      background: var(--card-bg);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      margin:10px 0;
+    }
+    .card .card-head{
+      display:flex; align-items:center; gap:8px; padding:10px 12px; border-bottom:1px solid rgba(255,255,255,.08);
+      background: linear-gradient(180deg, rgba(255,255,255,.03), transparent);
+    }
+    .pill{
+      font-size:11px; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+      padding:4px 8px; border-radius:999px; border:1px solid rgba(255,255,255,.15);
+      color:#ffd; background:linear-gradient(135deg,#2a2a2a,#1b1b1b);
+    }
+    .card .title{ font-weight:700; font-size:14px; color:#e7f0ff; }
+    .card .body{ padding:10px; }
+
+    /* iframe универсально */
+    .embed-frame{
+      width:100%; border:none; display:block; background:#0b0e15;
+      border-radius:10px; overflow:hidden;
+    }
+    /* Видео 16:9 */
+    .video-box{ position:relative; width:100%; padding-top:56.25%; border-radius:10px; overflow:hidden; background:#000; }
+    .video-box iframe{ position:absolute; inset:0; width:100%; height:100%; border:0; }
+
+    /* VK виджеты под темную тему */
+    .vk-box{ background:#0b0e15; border-radius:10px; overflow:hidden; padding:6px; }
+    .vk-container{ width:100%; min-height:150px; }
+
+    /* Яндекс.Музыка карточка */
+    .ym-card{
+      display:flex; gap:10px; align-items:center;
+    }
+    .ym-cover{
+      width:64px; height:64px; border-radius:10px; overflow:hidden; flex:0 0 64px;
+      background:#111 url('../img/logo.png') center/cover no-repeat;
+      box-shadow:0 2px 8px rgba(0,0,0,.4);
+    }
+    .ym-info{ flex:1; min-width:0; }
+    .ym-title{ font-weight:800; font-size:14px; margin:2px 0; }
+    .ym-sub{ color:#a8bdde; font-size:12px; opacity:.9; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+    .ym-go{
+      margin-left:auto;
+      background: var(--accent);
+      color:#fff; border:none; border-radius:8px;
+      padding:8px 12px; font-weight:800; letter-spacing:.04em; cursor:pointer;
+      box-shadow:0 4px 12px rgba(232,1,0,.35);
+    }
+
+    .muted{ color:#9bb1d3; font-size:12px; opacity:.85; }
+    .spacer{ height:10px; }
+
+    /* мелкие адаптивы */
+    @media (max-width:420px){
+      .news-wrap{ max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="news-wrap" id="news-wrap">
+    <div class="headline">
+      <div class="logo"></div>
+      <h1>Новости</h1>
+    </div>
+    <div class="subnote">Самое актуальное из наших соцсетей. Страница адаптирована под мобильный формат (max 400px).</div>
+
+    <div class="quick-links" aria-label="Быстрые ссылки">
+      <a class="btn" href="https://t.me/vitrina_razbita" target="_blank" rel="noopener" title="Telegram">
+        <svg viewBox="0 0 24 24" fill="#4daaff"><path d="M9.04 15.47l-.39 5.51c.56 0 .81-.24 1.1-.53l2.64-2.53 5.46 3.97c1 .55 1.7.26 1.96-.93l3.55-16.64.01-.01c.32-1.5-.54-2.09-1.51-1.72L1.16 9.7c-1.46.57-1.44 1.38-.25 1.75l5.4 1.68 12.56-7.93c.59-.38 1.12-.17.68.21"/></svg>
+        Telegram
+      </a>
+      <a class="btn" href="https://youtube.com/@..." target="_blank" rel="noopener" title="YouTube">
+        <svg viewBox="0 0 24 24" fill="#ff3b3b"><path d="M23.5 6.2s-.2-1.6-.8-2.3c-.8-.9-1.8-.9-2.2-1C16.7 2.5 12 2.5 12 2.5h0s-4.7 0-8.5.4c-.4 0-1.4 0-2.2 1-.6.7-.8 2.3-.8 2.3S0 8.1 0 10v1.9c0 1.9.2 3.8.2 3.8s.2 1.6.8 2.3c.8.9 1.9.9 2.3 1 1.7.2 7.5.4 8.6.4 0 0 4.7 0 8.5-.4.4 0 1.4 0 2.2-1 .6-.7.8-2.3.8-2.3s.2-1.9.2-3.8V10c0-1.9-.2-3.8-.2-3.8zM9.6 13.6V6.9l6.3 3.35-6.3 3.35z"/></svg>
+        YouTube
+      </a>
+      <a class="btn" href="https://music.yandex.ru/artist/24739002?utm_source=web&utm_medium=copy_link" target="_blank" rel="noopener" title="Яндекс Музыка">
+        <svg viewBox="0 0 24 24" fill="#ffd400"><circle cx="12" cy="12" r="10"/></svg>
+        Я.Музыка
+      </a>
+      <a class="btn" href="https://vk.com/..." target="_blank" rel="noopener" title="VK">
+        <svg viewBox="0 0 24 24" fill="#4daaff"><path d="M12.9 17.7c-4.6 0-7.2-3.1-7.4-8.4h2.6c.2 3.9 1.8 5.6 3.1 6V9.3h2.3v3.2c1.3-.2 2.6-1.7 3-3.2h2.4c-.3 1.4-1.8 3.1-2.8 3.7.9.4 2.4 1.7 2.9 3.7h-2.6c-.4-1.4-1.4-2.4-2.9-2.6v2.6h-2.3v-2.6c-1.8.4-3 1.2-3.5 2.6H5.5c.6-1.8 2.2-3.3 3.5-3.7-1.2-.7-2.4-2.4-2.6-3.7h2.4c.3 1.5 1.7 3 3.1 3.2v-3.2h2.3v8.4z"/></svg>
+        VK
+      </a>
+    </div>
+
+    <!-- Лента Telegram-канала -->
+    <div class="section-title">Лента Telegram</div>
+    <div class="card">
+      <div class="card-head">
+        <span class="pill">TG</span>
+        <div class="title">Канал @vitrina_razbita</div>
+      </div>
+      <div class="body">
+        <iframe
+          class="embed-frame"
+          id="tg-feed"
+          src="https://t.me/s/vitrina_razbita?embed=1&locale=ru"
+          loading="lazy"
+          style="height: 620px;"
+          title="Telegram feed">
+        </iframe>
+        <div class="muted" style="margin-top:8px;">Если лента не загрузилась — откройте канал в приложении Telegram.</div>
+      </div>
+    </div>
+
+    <div class="section-title">Избранное</div>
+    <div id="custom-feed"></div>
+
+    <div class="spacer"></div>
+  </div>
+
+  <script>
+    // Утилита: отправляем родителю (основному приложению) свою высоту,
+    // чтобы iframe подстроили без двойной прокрутки.
+    function postHeight() {
+      try {
+        const h = document.documentElement.scrollHeight;
+        parent && parent.postMessage({ type: 'news_height', height: h }, '*');
+      } catch(e){}
+    }
+    const ro = new ResizeObserver(()=> postHeight());
+    ro.observe(document.documentElement);
+    window.addEventListener('load', postHeight);
+    window.addEventListener('DOMContentLoaded', postHeight);
+    setTimeout(postHeight, 500);
+
+    // Рендер карточек из /news/custom.json
+    const FEED_BOX = document.getElementById('custom-feed');
+
+    // Парсинг YouTube ID из разных типов URL
+    function extractYouTubeId(url) {
+      try {
+        const u = new URL(url);
+        if (/youtube\.com$|youtube\.com$/i.test(u.hostname)) {
+          if (u.pathname.startsWith('/watch')) return u.searchParams.get('v');
+          if (u.pathname.startsWith('/shorts/')) return u.pathname.split('/')[2];
+          if (u.pathname.startsWith('/embed/')) return u.pathname.split('/')[2];
+        }
+        if (/youtu\.be$/i.test(u.hostname)) {
+          return u.pathname.replace(/^\/+/, '').split('/')[0];
+        }
+      } catch(e){}
+      return null;
+    }
+
+    function createCardHead(pillText, title){
+      const head = document.createElement('div');
+      head.className = 'card-head';
+      const pill = document.createElement('span');
+      pill.className = 'pill';
+      pill.textContent = pillText;
+      const t = document.createElement('div');
+      t.className = 'title';
+      t.textContent = title || '';
+      head.appendChild(pill);
+      head.appendChild(t);
+      return head;
+    }
+
+    function renderTelegramPost(item){
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.appendChild(createCardHead('TG', item.title || 'Пост в Telegram'));
+      const body = document.createElement('div');
+      body.className = 'body';
+      const src = item.url.includes('?') ? item.url + '&embed=1&locale=ru' : item.url + '?embed=1&locale=ru';
+      const ifr = document.createElement('iframe');
+      ifr.className = 'embed-frame';
+      ifr.loading = 'lazy';
+      ifr.title = 'Telegram пост';
+      ifr.style.height = (item.height || 460) + 'px';
+      ifr.src = src;
+      body.appendChild(ifr);
+      card.appendChild(body);
+      return card;
+    }
+
+    function renderYouTube(item){
+      const id = item.youtubeId || extractYouTubeId(item.url);
+      if (!id) return null;
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.appendChild(createCardHead('YT', item.title || 'Видео на YouTube'));
+      const body = document.createElement('div');
+      body.className = 'body';
+      const vb = document.createElement('div');
+      vb.className = 'video-box';
+      vb.innerHTML = '<iframe src="https://www.youtube.com/embed/'+id+'" title="YouTube video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>';
+      body.appendChild(vb);
+      if (item.caption) {
+        const p = document.createElement('div');
+        p.className = 'muted';
+        p.style.marginTop = '8px';
+        p.textContent = item.caption;
+        body.appendChild(p);
+      }
+      card.appendChild(body);
+      return card;
+    }
+
+    function renderYandexMusic(item){
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.appendChild(createCardHead('YM', item.title || 'Яндекс Музыка'));
+      const body = document.createElement('div');
+      body.className = 'body ym-card';
+      const cov = document.createElement('div');
+      cov.className = 'ym-cover';
+      if (item.cover) cov.style.backgroundImage = 'url('+item.cover+')';
+      const inf = document.createElement('div');
+      inf.className = 'ym-info';
+      const tt = document.createElement('div');
+      tt.className = 'ym-title';
+      tt.textContent = item.title || 'Перейти к исполнителю';
+      const sb = document.createElement('div');
+      sb.className = 'ym-sub';
+      sb.textContent = item.subtitle || 'Откройте нас в Яндекс Музыке';
+      inf.appendChild(tt); inf.appendChild(sb);
+      const btn = document.createElement('a');
+      btn.className = 'ym-go';
+      btn.href = item.url;
+      btn.target = '_blank'; btn.rel = 'noopener';
+      btn.textContent = 'Открыть';
+      body.appendChild(cov); body.appendChild(inf); body.appendChild(btn);
+      card.appendChild(body);
+      return card;
+    }
+
+    // VK плейлисты через OpenAPI
+    const vkQueue = [];
+    function renderVKPlaylist(item, index){
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.appendChild(createCardHead('VK', item.title || 'Плейлист VK'));
+      const body = document.createElement('div');
+      body.className = 'body';
+      const box = document.createElement('div');
+      box.className = 'vk-box';
+      const cont = document.createElement('div');
+      const containerId = item.containerId || ('vk_playlist_' + item.ownerId + '_' + item.playlistId + '_' + index);
+      cont.id = containerId;
+      cont.className = 'vk-container';
+      box.appendChild(cont);
+      body.appendChild(box);
+      card.appendChild(body);
+      // Очередь на инициализацию, когда подгрузится VK OpenAPI
+      vkQueue.push({ containerId, ownerId:item.ownerId, playlistId:item.playlistId, hash:item.hash });
+      return card;
+    }
+
+    function bootVK(){
+      if (!vkQueue.length) return;
+      // Если VK уже есть — инициализируем; если нет — подгрузим
+      function initAll(){
+        try {
+          vkQueue.forEach(it=>{
+            if (window.VK && VK.Widgets && VK.Widgets.Playlist){
+              VK.Widgets.Playlist(it.containerId, it.ownerId, it.playlistId, it.hash);
+            }
+          });
+          setTimeout(postHeight, 400);
+        } catch(e){}
+      }
+      if (window.VK && VK.Widgets && VK.Widgets.Playlist){
+        initAll();
+      } else {
+        const s = document.createElement('script');
+        s.src = 'https://vk.com/js/api/openapi.js?173';
+        s.onload = initAll;
+        document.head.appendChild(s);
+      }
+    }
+
+    async function loadCustom(){
+      let data = null;
+      try {
+        const r = await fetch('./custom.json', { cache:'no-cache' });
+        data = await r.json();
+      } catch(e){
+        data = { items: [] };
+      }
+      const items = Array.isArray(data?.items) ? data.items : [];
+      if (!items.length){
+        const empty = document.createElement('div');
+        empty.className = 'muted';
+        empty.textContent = 'Пока нет закреплённых постов. Откройте ленту Telegram выше — там всегда свежие публикации.';
+        FEED_BOX.appendChild(empty);
+        postHeight();
+        return;
+      }
+      items.forEach((item, idx)=>{
+        let card = null;
+        switch(String(item.type||'').toLowerCase()){
+          case 'tg': case 'tgpost':
+            card = renderTelegramPost(item); break;
+          case 'yt': case 'youtube':
+            card = renderYouTube(item); break;
+          case 'vk': case 'vkplaylist':
+            card = renderVKPlaylist(item, idx); break;
+          case 'ym': case 'yandex':
+            card = renderYandexMusic(item); break;
+        }
+        if (card) FEED_BOX.appendChild(card);
+      });
+      bootVK();
+      setTimeout(postHeight, 800);
+    }
+
+    loadCustom();
+  </script>
+</body>
+</html>
