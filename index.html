@@ -2058,23 +2058,18 @@ function renderLyricsBlock() {
   const block = document.getElementById('lyricsplayerblock') || document.getElementById('now-playing');
   if (!block) return;
 
-  // Показывать ли мини‑шапку сейчас?
-  const shouldShowMiniNow = (function(){
-    if (viewMode === 'favorites' && playingAlbumKey === SPECIAL_FAVORITES_KEY) return false;
-    return isBrowsingOtherAlbum();
-  })();
-
-  const miniNowHtml = shouldShowMiniNow ? `
+  // ВАЖНО: мини‑шапку рендерим ВСЕГДА, чтобы при переключении в мини‑режим она уже была в DOM.
+  // Её видимость управляется:
+  // - CSS: .mini-mode .mini-now { display:flex } (по умолчанию скрыта)
+  // - JS: updateMiniNowHeader() (дополнительно выставляет display при необходимости)
+  block.innerHTML = `
     <div class="mini-now" id="mini-now" onclick="openPlayingAlbumFromMini(event)">
       <span class="tnum" id="mini-now-num">--.</span>
       <span class="track-title" id="mini-now-title">—</span>
       <img src="img/star2.png" class="like-star" id="mini-now-star"
            alt="звезда" title="Добавить в понравившиеся"
            onclick="toggleLikePlayingFromMini(event)"/>
-    </div>` : '';
-
-  block.innerHTML = `
-    ${miniNowHtml}
+    </div>
     <div id="lyrics-window" class="lyrics-normal">
       <div class="lyrics-animated-bg${animationEnabled ? ' active' : ''}"></div>
       <div class="lyrics-scroll" id="lyrics"></div>
