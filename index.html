@@ -594,7 +594,19 @@ let playingShuffledPlaylist = [];
 let playingShuffleIndex = 0;
 let playingTrack = -1; // индекс текущего ИГРАЮЩЕГО трека (всегда синхронизирован с currentTrack)
 function isBrowsingOtherAlbum() {
-  return !!(playingAlbumKey && currentAlbumKey && playingAlbumKey !== currentAlbumKey && document.getElementById('lyricsplayerblock'));
+  const lp = document.getElementById('lyricsplayerblock');
+  if (!playingAlbumKey || !lp) return false;
+
+  // Если мы смотрим «ИЗБРАННОЕ», мини‑режим нужен тогда, когда играет НЕ «ИЗБРАННОЕ»
+  if (viewMode === 'favorites') {
+    return playingAlbumKey !== SPECIAL_FAVORITES_KEY;
+  }
+
+  // Любой инфо‑раздел (например, «НОВОСТИ») — всегда мини‑режим
+  if (viewMode === 'reliz') return true;
+
+  // Обычный случай: смотрим один альбом, играет другой
+  return !!(currentAlbumKey && playingAlbumKey !== currentAlbumKey);
 }
 
 let coverGalleryArr = [];
@@ -1278,6 +1290,9 @@ async function openFavoritesView(){
       holder.appendChild(lp);
     }
   } catch {}
+
+  // ВАЖНО: сразу применим мини‑режим. Играет реальный альбом, а мы смотрим «ИЗБРАННОЕ» — должен быть мини‑режим.
+  applyMiniModeUI();
 
   // 1) скрываем обложку (у «ИЗБРАННОГО» нет собственной)
   const cw = document.getElementById('cover-wrap'); if (cw) cw.style.display = 'none';
@@ -2042,14 +2057,24 @@ function showTrack(n, doPlay) {
 function renderLyricsBlock() {
   const block = document.getElementById('lyricsplayerblock') || document.getElementById('now-playing');
   if (!block) return;
-  block.innerHTML = `
+
+  // Показывать ли мини‑шапку сейчас?
+  const shouldShowMiniNow = (function(){
+    if (viewMode === 'favorites' && playingAlbumKey === SPECIAL_FAVORITES_KEY) return false;
+    return isBrowsingOtherAlbum();
+  })();
+
+  const miniNowHtml = shouldShowMiniNow ? `
     <div class="mini-now" id="mini-now" onclick="openPlayingAlbumFromMini(event)">
       <span class="tnum" id="mini-now-num">--.</span>
       <span class="track-title" id="mini-now-title">—</span>
       <img src="img/star2.png" class="like-star" id="mini-now-star"
            alt="звезда" title="Добавить в понравившиеся"
            onclick="toggleLikePlayingFromMini(event)"/>
-    </div>
+    </div>` : '';
+
+  block.innerHTML = `
+    ${miniNowHtml}
     <div id="lyrics-window" class="lyrics-normal">
       <div class="lyrics-animated-bg${animationEnabled ? ' active' : ''}"></div>
       <div class="lyrics-scroll" id="lyrics"></div>
