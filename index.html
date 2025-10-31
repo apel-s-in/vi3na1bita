@@ -382,6 +382,129 @@
     .mini-mode #lyrics-window.animation-active .lyrics-window-line.active { animation: none !important; }
 
     .track.inactive { opacity: .5; filter: grayscale(60%); }
+    
+    /* ===== Модалка текста песни ===== */
+    #lyrics-text-modal { z-index: 110; } /* выше обычных окон */
+    #lyrics-text-modal .lyrics-modal {
+      position: relative;
+      width: min(96vw, 740px);
+      height: min(92vh, 820px);
+      background: var(--modal-bg);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 16px;
+      box-shadow: 0 10px 32px rgba(0,0,0,.6);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      padding: 12px 12px 12px 12px;
+    }
+
+    /* Анимированный фон — тот же класс, что и у лирики */
+    #lyrics-text-modal .lyrics-animated-bg {
+      position: absolute;
+      inset: 0;
+      opacity: .5;
+      background: linear-gradient(45deg, rgba(232,1,0,0.15), rgba(77,170,255,0.15), rgba(232,1,0,0.15));
+      background-size: 400% 400%;
+      animation: lyricsGradient 10s ease infinite;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Шапка */
+    .lyrics-modal-header {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 4px 4px 8px 4px;
+      border-bottom: 1px solid rgba(255,255,255,.08);
+      background: linear-gradient(180deg, rgba(255,255,255,.03), transparent);
+    }
+    .lyrics-modal-title {
+      font-size: 1.2rem;
+     font-weight: 800;
+      letter-spacing: .02em;
+      color: #e7f0ff;
+      flex: 1;
+      overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    .lyrics-modal-close {
+      background: none; border: none; color: #cfe3ff; cursor: pointer;
+      border-radius: 10px; width: 36px; height: 36px;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: transform .15s ease;
+      z-index: 1;
+    }
+    .lyrics-modal-close:hover { transform: scale(1.05); }
+    .lyrics-modal-close svg { width: 28px; height: 28px; }
+
+    /* Контент с текстом — скролл только внутри! */
+    .lyrics-modal-content {
+      position: relative;
+      z-index: 1;
+     flex: 1;
+      display: flex;
+      min-height: 0; /* важно, чтобы flex-child мог скроллиться */
+      padding: 8px 4px 8px 4px;
+    }
+    .lyrics-modal-scroll {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      overflow: auto; /* только область текста скроллится */
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.08);
+      background: rgba(0,0,0,.25);
+      padding: 10px;
+    }
+
+    /* Сам текст — учитываем ширину самой длинной строки */
+    .lyrics-modal-pre {
+      margin: 0;
+      color: #eef4ff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      font-size: .98rem;
+      line-height: 1.5;
+      white-space: pre;          /* без переноса строк */
+      display: inline-block;     /* чтобы можно было измерить scrollWidth */
+      max-width: 100%;           /* не шире контейнера */
+    }
+
+    /* Кнопки снизу (две, одна под другой) */
+    .lyrics-modal-buttons {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 8px 4px 4px 4px;
+      border-top: 1px solid rgba(255,255,255,.08);
+      background: linear-gradient(0deg, rgba(255,255,255,.03), transparent);
+    }
+    .lyrics-modal-btn {
+      padding: 12px 16px;
+      border: none;
+      border-radius: 10px;
+      font-weight: 800;
+      letter-spacing: .02em;
+      cursor: pointer;
+      color: var(--text-color);
+      background: rgba(255,255,255,.12);
+      transition: transform .12s ease, opacity .2s ease;
+    }
+    .lyrics-modal-btn.primary {
+      /* “Как у СКОПИРОВАТЬ ТЕКСТ”: делаем ту же цветовую доминанту, что у ссылок */
+      background: none;
+      color: var(--secondary-color);
+      text-decoration: underline;
+    }
+    .lyrics-modal-btn:hover { opacity: .9; transform: translateY(-1px); }
+
+    /* Клик по подложке закрывает окно */
+    #lyrics-text-modal.active { display: flex; }
+    #lyrics-text-modal { align-items: center; justify-content: center; }
   </style>
 </head>
 <body>
@@ -506,6 +629,34 @@
       <div id="errorsList" style="display: none; color: #ff6b6b; font-size: 14px; margin-top: 15px;">
         <p><strong>Не удалось загрузить:</strong></p>
         <ul id="errorsListContent"></ul>
+      </div>
+    </div>
+  </div>
+  <!-- Модалка текста песни -->
+  <div class="modal-bg" id="lyrics-text-modal">
+    <div class="lyrics-modal" role="dialog" aria-modal="true" aria-labelledby="lyrics-modal-title">
+      <!-- Анимированный фон (как у лирики) -->
+      <div class="lyrics-animated-bg"></div>
+
+      <!-- Верхняя шапка c названием трека -->
+      <div class="lyrics-modal-header">
+        <div class="lyrics-modal-title" id="lyrics-modal-title">Трек</div>
+        <button class="lyrics-modal-close" type="button" aria-label="Закрыть" onclick="closeLyricsModal()">
+          <svg viewBox="0 0 48 48"><line x1="12" y1="12" x2="36" y2="36" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="36" y1="12" x2="12" y2="36" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <!-- Скроллируемая область с текстом -->
+      <div class="lyrics-modal-content">
+        <div class="lyrics-modal-scroll">
+          <pre class="lyrics-modal-pre" id="lyrics-modal-pre"></pre>
+        </div>
+      </div>
+
+      <!-- Кнопки внизу -->
+      <div class="lyrics-modal-buttons">
+        <button class="lyrics-modal-btn primary" type="button" onclick="copyLyricsFromModal()">Скопировать в буфер обмена</button>
+        <button class="lyrics-modal-btn" type="button" onclick="closeLyricsModal()">Закрыть</button>
       </div>
     </div>
   </div>
@@ -2226,7 +2377,7 @@ function renderLyricsBlock() {
     <div class="next-up" id="next-up"><span class="label">Следующая:</span> <span class="title">—</span></div>
     <div class="player-buttons-wrapper">
       <button class="lyrics-toggle-btn lyrics-normal" onclick="toggleLyricsView()" aria-label="Скрыть лирику" title="Скрыть лирику (Y)"><span class="lyrics-toggle-btn-visual">Т</span></button>
-      <button class="karaoke-btn" onclick="copyLyrics()">СКОПИРОВАТЬ ТЕКСТ</button>
+      <button class="karaoke-btn" onclick="openLyricsModal()">ТЕКСТ</button>
       <a class="player-download-btn" href="#" onclick="openDownloadModal(event)">СКАЧАТЬ ПЕСНЮ</a>
     </div>
   `;
@@ -3227,6 +3378,119 @@ function openInAppCurrentTrack(){
   // Открываем аудио в внешнем плеере/вкладке
   window.open(tr.audio, '_blank', 'noopener');
   closeDownloadModal();
+}
+/* ===== Устойчивое копирование в буфер (мобилки/iOS/https/HTTP) ===== */
+async function copyTextToClipboard(text) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.left = '-1000px';
+    ta.setAttribute('readonly', '');
+    document.body.appendChild(ta);
+
+    // iOS специфично: нужно выделить вручную
+    const range = document.createRange();
+    range.selectNodeContents(ta);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    ta.setSelectionRange(0, ta.value.length);
+
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return !!ok;
+  } catch {
+    return false;
+  }
+}
+
+/* ===== Модалка текста песни ===== */
+let __lyricsModalTextCache = ''; // кеш последнего загруженного текста (для копирования)
+function getCurrentTrackMetaForText() {
+  const pc = getPlayerConfig();
+  const idx = (typeof playingTrack === 'number' && playingTrack >= 0) ? playingTrack : currentTrack;
+  if (!pc || !pc.tracks || idx < 0 || !pc.tracks[idx]) return null;
+  return { title: pc.tracks[idx].title, fulltext: pc.tracks[idx].fulltext || null };
+}
+
+async function openLyricsModal() {
+  const meta = getCurrentTrackMetaForText();
+  if (!meta || !meta.fulltext) {
+    NotificationSystem.warning('Файл с текстом не найден!');
+    return;
+  }
+
+  // Заголовок — только название композиции
+  const titleEl = document.getElementById('lyrics-modal-title');
+  if (titleEl) titleEl.textContent = meta.title || 'Текст песни';
+
+  // Включаем фон-анимацию (как у лирики) при активном режиме
+  try {
+    const bg = document.querySelector('#lyrics-text-modal .lyrics-animated-bg');
+    if (bg) {
+      if (animationEnabled) bg.classList.add('active');
+      else bg.classList.remove('active');
+    }
+  } catch {}
+
+  // Показываем модалку сразу, наполняем текст после загрузки
+  const modal = document.getElementById('lyrics-text-modal');
+  modal.classList.add('active');
+
+  // Клик по подложке — закрыть
+  modal.onclick = (e) => { if (e.target === modal) closeLyricsModal(); };
+
+  const pre = document.getElementById('lyrics-modal-pre');
+  const sc = document.querySelector('#lyrics-text-modal .lyrics-modal-scroll');
+  if (pre) pre.textContent = 'Загрузка...';
+
+  try {
+    const res = await fetch(meta.fulltext, { cache: 'no-cache' });
+    const txt = await res.text();
+    __lyricsModalTextCache = txt;
+
+    if (pre) {
+      pre.textContent = txt;
+
+      // Подгоняем ширину по самой длинной строке, но не шире контейнера
+      // (если ширина больше — появится горизонтальный скролл внутри .lyrics-modal-scroll)
+      requestAnimationFrame(() => {
+        try {
+          const maxW = sc ? sc.clientWidth : pre.parentElement.clientWidth;
+          const sw = pre.scrollWidth;
+          pre.style.width = Math.min(sw, maxW) + 'px';
+          // Сбрасываем прокрутку в начало
+          if (sc) { sc.scrollTop = 0; sc.scrollLeft = 0; }
+        } catch {}
+      });
+    }
+  } catch {
+    if (pre) pre.textContent = 'Не удалось загрузить текст :(';
+  }
+}
+
+function closeLyricsModal() {
+  const modal = document.getElementById('lyrics-text-modal');
+  if (!modal) return;
+  modal.classList.remove('active');
+}
+
+async function copyLyricsFromModal() {
+  try {
+    const ok = await copyTextToClipboard(__lyricsModalTextCache || '');
+    if (ok) NotificationSystem.success('Текст скопирован!');
+    else NotificationSystem.error('Не удалось скопировать');
+  } catch {
+    NotificationSystem.error('Не удалось скопировать');
+  }
 }
 
 /* ====== Скачивание альбома ====== */
