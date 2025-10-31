@@ -387,7 +387,9 @@
     #lyrics-text-modal { z-index: 110; } /* выше обычных окон */
     #lyrics-text-modal .lyrics-modal {
       position: relative;
-      width: min(96vw, 740px);
+      /* ширину выставляем скриптом под самую длинную строку; ограничение сверху */
+      width: auto;
+      max-width: 96vw;
       height: min(92vh, 820px);
       background: var(--modal-bg);
       border: 1px solid rgba(255,255,255,.1);
@@ -472,7 +474,7 @@
       max-width: 100%;           /* не шире контейнера */
     }
 
-    /* Кнопки снизу (две, одна под другой) */
+    /* Низ модалки: две зоны — 1) ряд с лупами и копированием; 2) кнопка «Закрыть» */
     .lyrics-modal-buttons {
       position: relative;
       z-index: 1;
@@ -483,6 +485,35 @@
       border-top: 1px solid rgba(255,255,255,.08);
       background: linear-gradient(0deg, rgba(255,255,255,.03), transparent);
     }
+    .lyrics-controls-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: nowrap;
+    }
+    .lyrics-zoom-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.1);
+      background: rgba(255,255,255,.1);
+      color: #cfe3ff;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform .12s ease, opacity .2s ease;
+    }
+    .lyrics-zoom-btn:hover { opacity: .95; transform: translateY(-1px); }
+
+    .lyrics-modal-btn.primary.bigcopy {
+      flex: 1;
+      font-size: 1.06rem;          /* чуть крупнее */
+      text-decoration: underline;
+      color: var(--secondary-color);
+      background: none;
+    }
+
     .lyrics-modal-btn {
       padding: 12px 16px;
       border: none;
@@ -641,9 +672,6 @@
       <!-- Верхняя шапка c названием трека -->
       <div class="lyrics-modal-header">
         <div class="lyrics-modal-title" id="lyrics-modal-title">Трек</div>
-        <button class="lyrics-modal-close" type="button" aria-label="Закрыть" onclick="closeLyricsModal()">
-          <svg viewBox="0 0 48 48"><line x1="12" y1="12" x2="36" y2="36" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="36" y1="12" x2="12" y2="36" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg>
-        </button>
       </div>
 
       <!-- Скроллируемая область с текстом -->
@@ -655,7 +683,21 @@
 
       <!-- Кнопки внизу -->
       <div class="lyrics-modal-buttons">
-        <button class="lyrics-modal-btn primary" type="button" onclick="copyLyricsFromModal()">Скопировать в буфер обмена</button>
+        <div class="lyrics-controls-row">
+          <button class="lyrics-zoom-btn" type="button" title="Уменьшить" aria-label="Уменьшить" onclick="zoomLyrics(-1)">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+              <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zM9.5 14C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+              <rect x="7" y="9" width="5" height="1.8" rx=".9"></rect>
+            </svg>
+          </button>
+          <button class="lyrics-modal-btn primary bigcopy" type="button" onclick="copyLyricsFromModal()">Скопировать в буфер обмена</button>
+          <button class="lyrics-zoom-btn" type="button" title="Увеличить" aria-label="Увеличить" onclick="zoomLyrics(1)">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+              <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zM9.5 14C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+              <path d="M10.4 7.7h-1.8v1.8H6.8v1.8h1.8v1.8h1.8v-1.8h1.8V9.5h-1.8V7.7z"/>
+            </svg>
+          </button>
+        </div>
         <button class="lyrics-modal-btn" type="button" onclick="closeLyricsModal()">Закрыть</button>
       </div>
     </div>
@@ -3460,13 +3502,11 @@ async function openLyricsModal() {
     if (pre) {
       pre.textContent = txt;
 
-      // Подгоняем ширину по самой длинной строке, но не шире контейнера
-      // (если ширина больше — появится горизонтальный скролл внутри .lyrics-modal-scroll)
+      // 1) Выставляем ширину модалки ровно под самую длинную строку (до 96vw)
+      // 2) На мобилках автоматически уменьшаем шрифт, чтобы не было горизонтального скролла
       requestAnimationFrame(() => {
         try {
-          const maxW = sc ? sc.clientWidth : pre.parentElement.clientWidth;
-          const sw = pre.scrollWidth;
-          pre.style.width = Math.min(sw, maxW) + 'px';
+          layoutLyricsModalFit();
           // Сбрасываем прокрутку в начало
           if (sc) { sc.scrollTop = 0; sc.scrollLeft = 0; }
         } catch {}
@@ -3491,6 +3531,124 @@ async function copyLyricsFromModal() {
   } catch {
     NotificationSystem.error('Не удалось скопировать');
   }
+}
+/* ===== Параметры модалки ТЕКСТ: базовый размер, подгон под ширину, зум ===== */
+let __lyricsFitFontPx = null;        // размер шрифта, при котором ширина ровно влезает (для мобилок)
+let __lyricsCurrFontPx = null;       // текущий размер шрифта (для +/-)
+let __lyricsFitContentWidth = null;  // ширина текстовой области при fit (без горизонтальной прокрутки)
+
+/* Возвращает размеры «хрома» (отступы/рамки), чтобы рассчитать ширину модалки под текст */
+function __getLyricsChrome() {
+  const modal = document.querySelector('#lyrics-text-modal .lyrics-modal');
+  const sc    = document.querySelector('#lyrics-text-modal .lyrics-modal-scroll');
+  const stylesModal = getComputedStyle(modal);
+  const stylesSc    = getComputedStyle(sc);
+  const modalLR = parseFloat(stylesModal.paddingLeft) + parseFloat(stylesModal.paddingRight)
+                + parseFloat(stylesModal.borderLeftWidth) + parseFloat(stylesModal.borderRightWidth);
+  const scLR    = parseFloat(stylesSc.paddingLeft) + parseFloat(stylesSc.paddingRight)
+                + parseFloat(stylesSc.borderLeftWidth) + parseFloat(stylesSc.borderRightWidth);
+  return { modalLR, scLR };
+}
+
+/* Выставляет ширину модалки и области скролла под заданную ширину контента */
+function __applyWidths(contentWidth) {
+  const modal = document.querySelector('#lyrics-text-modal .lyrics-modal');
+  const sc    = document.querySelector('#lyrics-text-modal .lyrics-modal-scroll');
+  const { modalLR, scLR } = __getLyricsChrome();
+  const vwMax = Math.floor(window.innerWidth * 0.96);
+  const fitScWidth = Math.min(contentWidth, vwMax - modalLR);  // ширина области текста
+  sc.style.width = fitScWidth + 'px';
+  modal.style.width = (fitScWidth + modalLR) + 'px';
+  return fitScWidth;
+}
+
+/* Подгон по самой длинной строке: 
+   - desktop: ширина модалки = ширине текста (без изменения шрифта), до 96vw;
+   - mobile: уменьшаем шрифт, чтобы текст влез без горизонтального скролла. */
+function layoutLyricsModalFit() {
+  const pre = document.getElementById('lyrics-modal-pre');
+  const sc  = document.querySelector('#lyrics-text-modal .lyrics-modal-scroll');
+  if (!pre || !sc) return;
+
+  // сброс временных ограничений перед измерением
+  pre.style.width = 'auto';
+  sc.style.width  = 'auto';
+  sc.style.overflowX = 'hidden';
+
+  // изначальный размер шрифта
+  const computed = getComputedStyle(pre);
+  const basePx = parseFloat(computed.fontSize) || 16;
+  __lyricsCurrFontPx = basePx;
+
+  // ширина текста по самой длинной строке
+  const sw = Math.ceil(pre.scrollWidth);
+  // применяем ширины (без учёта уменьшения шрифта)
+  const appliedScWidth = __applyWidths(sw);
+
+  // Мобильный режим (сжатая ширина вьюпорта) — уменьшаем шрифт, если не влезает
+  const isMobile = isMobileUA() || window.innerWidth <= 600;
+  if (isMobile && sw > appliedScWidth) {
+    // доступная ширина контента = appliedScWidth
+    let fontPx = basePx;
+    let guard = 0;
+    while (guard++ < 20) {
+      // оценочное масштабирование (с запасом)
+      const scale = appliedScWidth / pre.scrollWidth;
+      if (scale >= 1) break;
+      const next = Math.max(12, Math.floor(fontPx * scale * 0.98));
+      if (next >= fontPx) break;
+      fontPx = next;
+      pre.style.fontSize = fontPx + 'px';
+      // дать браузеру перерисоваться
+      // eslint-disable-next-line no-unused-expressions
+      pre.offsetWidth; 
+      if (pre.scrollWidth <= appliedScWidth) break;
+    }
+    __lyricsFitFontPx = fontPx;
+    __lyricsCurrFontPx = fontPx;
+    // гарантируем отсутствие горизонтального скролла в fit-режиме
+    sc.style.overflowX = 'hidden';
+  } else {
+    // desktop: шрифт не меняем
+    __lyricsFitFontPx = basePx;
+    __lyricsCurrFontPx = basePx;
+  }
+
+  // сохраняем базовую «fit»-ширину области скролла (для будущего масштабирования)
+  __lyricsFitContentWidth = parseFloat(sc.style.width) || sc.clientWidth;
+}
+
+/* Применить текущий размер шрифта и режим прокрутки (для зума) */
+function __applyZoomFont() {
+  const pre = document.getElementById('lyrics-modal-pre');
+  const sc  = document.querySelector('#lyrics-text-modal .lyrics-modal-scroll');
+  if (!pre || !sc) return;
+  pre.style.fontSize = __lyricsCurrFontPx + 'px';
+
+  // Если увеличили больше «fit» — разрешаем горизонтальный скролл, ширину sc оставляем «fit»
+  if (__lyricsCurrFontPx > __lyricsFitFontPx) {
+    sc.style.overflowX = 'auto';
+    sc.style.width = (__lyricsFitContentWidth || sc.clientWidth) + 'px';
+  } else {
+    // при уменьшении до fit — прячем горизонтальный скролл
+    sc.style.overflowX = 'hidden';
+    sc.style.width = (__lyricsFitContentWidth || sc.clientWidth) + 'px';
+  }
+}
+
+/* Публичная функция: зум текста (delta = -1 уменьшить, +1 увеличить) */
+function zoomLyrics(delta) {
+  if (!__lyricsCurrFontPx || !__lyricsFitFontPx) return;
+  const step = 2;           // шаг в пикселях
+  const minPx = 10;         // нижняя граница
+  const maxPx = 48;         // верхняя граница (вручную можно больше)
+
+  if (delta < 0) {
+    __lyricsCurrFontPx = Math.max(minPx, __lyricsCurrFontPx - step);
+  } else {
+    __lyricsCurrFontPx = Math.min(maxPx, __lyricsCurrFontPx + step);
+  }
+  __applyZoomFont();
 }
 
 /* ====== Скачивание альбома ====== */
