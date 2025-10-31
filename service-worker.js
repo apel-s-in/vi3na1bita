@@ -17,7 +17,13 @@ const CORE_ASSETS = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-192-maskable.png',
-  './icons/icon-512-maskable.png'
+  './icons/icon-512-maskable.png',
+  './icons/favicon.svg',
+  './icons/favicon-32.png',
+  './icons/favicon-16.png',
+  './icons/apple-touch-icon.png',
+  './news.html',
+  './custom.json'
 ];
 
 /* Флаг принудительного cache-first режима (кнопка OFFLINE в UI) */
