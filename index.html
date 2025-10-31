@@ -19,6 +19,12 @@
   <!-- Preload -->
   <link rel="preload" href="img/logo.png" as="image">
 
+  <!-- FAVICONS -->
+  <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+  <link rel="alternate icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="alternate icon" href="icons/favicon-16.png" sizes="16x16" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
   <style>
     :root {
       --primary-bg: #181818;
@@ -88,7 +94,7 @@
     .cover-gallery-arrow:hover { opacity: 0.8; }
     #cover-gallery-arrow-left { left: 7px; }
     #cover-gallery-arrow-right { right: 7px; }
-    #cover { width: 100%; max-width: 100%; border-radius: 12px; aspect-ratio: 1/1; object-fit: cover; display: block; margin: 0; box-shadow: 0 4px 24px rgba(0,0,0,0.3); }
+    #cover { width: 100%; max-width: 100%; border-radius: 12px; object-fit: contain; display: block; margin: 0; box-shadow: 0 4px 24px rgba(0,0,0,0.3); }
 
     /* Лого */
     .logo-bottom {
@@ -755,6 +761,72 @@ function absJoin(base, rel) {
     return norm + '/' + String(rel || '').replace(/^\/+/, '');
   }
 }
+// Распознаём соотношение сторон из имени файла: ... (16x9), -16x9, _16x9 и т.п.
+function parseAspectFromFileName(url) {
+  try {
+    const name = url.split('?')[0].split('#')[0].split('/').pop();
+    const m = name.match(/(?:\(|-|_)(\d+)\s*[x:]\s*(\d+)\)?/i);
+    if (m) {
+      const w = parseInt(m[1], 10), h = parseInt(m[2], 10);
+      if (w > 0 && h > 0) return (w / h);
+    }
+  } catch {}
+  return 1; // по умолчанию квадрат
+}
+
+// Проверка существования файла (быстрый HEAD с фолбэком по времени)
+async function urlExists(url, timeout = 4000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeout);
+  try {
+    const r = await fetch(url, { method: 'HEAD', cache: 'no-cache', signal: ctrl.signal });
+    return r && (r.ok || r.status === 304);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// Список кандидатов для одного базового имени (Cover, Cover01, ...)
+function candidateNamesFor(baseName, baseUrl) {
+  // Приоритет: JPG (мобайл) -> PNG (десктоп)
+  const exts = ['jpg', 'png'];
+  const arTokens = ['16x9','9x16','3x2','2x3','4x3','3x4','1x1'];
+  const out = [];
+
+  // Сначала без приписок
+  for (const ext of exts) out.push(absJoin(baseUrl, `${baseName}.${ext}`));
+
+  // Варианты с приписками (скобки) и с дефисом
+  for (const token of arTokens) {
+    for (const ext of exts) out.push(absJoin(baseUrl, `${baseName}(${token}).${ext}`));
+    for (const ext of exts) out.push(absJoin(baseUrl, `${baseName}-${token}.${ext}`));
+    for (const ext of exts) out.push(absJoin(baseUrl, `${baseName}_${token}.${ext}`));
+  }
+  return out;
+}
+
+// Собираем галерею (возвращает [{src, ar}, ...] в порядке приоритета)
+async function buildCoverGalleryList(baseUrl) {
+  const bases = ['Cover', 'Cover01', 'Cover02', 'Cover03'];
+  const gallery = [];
+  for (const b of bases) {
+    const candidates = candidateNamesFor(b, baseUrl);
+    let picked = null;
+    for (const url of candidates) {
+      /* берём первую существующую */
+      // Чтобы не делать лишние запросы, можно ограничить первые 4-6 кандидатов (например, без токенов)
+      const exists = await urlExists(url);
+      if (exists) { picked = url; break; }
+    }
+    if (picked) {
+      gallery.push({ src: picked, ar: parseAspectFromFileName(picked) });
+    }
+  }
+  return gallery;
+}
+
 async function getAlbumConfigByKey(albumKey){
   if (albumConfigCache[albumKey]?.config) return albumConfigCache[albumKey].config;
   const meta = albumsIndex.find(a => a.key === albumKey);
@@ -903,12 +975,13 @@ async function loadAlbumConfig(base) {
     }
     config = data;
 
-    coverGalleryArr = [
-      absJoin(base, 'Cover.png'),
-      absJoin(base, 'Cover01.png'),
-      absJoin(base, 'Cover02.png'),
-      absJoin(base, 'Cover03.png')
-    ];
+    // Собираем динамический список обложек (JPG приоритет, затем PNG), с распознаванием соотношений
+    coverGalleryArr = await buildCoverGalleryList(base); // [{src, ar}, ...]
+    if (!Array.isArray(coverGalleryArr) || coverGalleryArr.length === 0) {
+      coverGalleryArr = [
+        { src: absJoin(base, 'Cover.png'), ar: 1 } // жёсткий фолбэк
+      ];
+    }
     coverGalleryIdx = 0;
     setCoverImage(coverGalleryIdx);
 
@@ -973,6 +1046,29 @@ setInterval(()=> {
   if (a && !a.paused) PlayerState.save();
 }, 5000);
 window.addEventListener('beforeunload', () => PlayerState.save());
+function isMobileUA() {
+  try { return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent); } catch { return false; }
+}
+function pickLogoUrl() {
+  const dpr = window.devicePixelRatio || 1;
+  const mobile = isMobileUA() || (Math.min(screen.width, screen.height) <= 820); // планшеты включаем
+  if (mobile) {
+    return dpr >= 2 ? 'img/mobile/logo@2x.jpg' : 'img/mobile/logo@1x.jpg';
+  }
+  // desktop/TV
+  if (dpr >= 3) return 'img/desktop/logo@3x.png';
+  if (dpr >= 2) return 'img/desktop/logo@2x.png';
+  return 'img/desktop/logo@1x.png';
+}
+function applyLogos() {
+  try {
+    const logoBottom = document.getElementById('logo-bottom');
+    if (logoBottom) logoBottom.src = pickLogoUrl();
+
+    const promo = document.getElementById('promo-cover');
+    if (promo) promo.src = pickLogoUrl(); // если хотите здесь показывать логотип; иначе оставьте как есть
+  } catch {}
+}
 
 /* ====== Инициализация UI ====== */
 function initializeMainUi() {
@@ -1557,6 +1653,7 @@ function buildAlbumIcons(){
   if (!box) return;
 
   // Собираем HTML с реальными ключами (для спец-иконок кладём спец-ключ)
+  const isMob = isMobileUA();
   const html = ICON_ALBUMS_ORDER.map(it=>{
     let dataKey = it.key;
     if (it.key !== SPECIAL_FAVORITES_KEY && it.key !== SPECIAL_RELIZ_KEY) {
@@ -1564,9 +1661,21 @@ function buildAlbumIcons(){
       dataKey = real || '__unknown__';
     }
     const title = it.title || '';
-    const icon = it.icon || 'img/logo.png';
+
+    // Путь к иконке: для мобайла — JPG; для десктопа — PNG
+    // Имена файлов должны существовать!
+    const baseIcon = it.icon || 'img/logo.png';
+    // Преобразуем baseIcon 'img/icon_album/icon-album-01.png' к парам 1x/2x
+    const path1x = isMob
+      ? baseIcon.replace(/icon_album\/(.+)\.png$/i, 'icon_album/mobile/$1@1x.jpg')
+      : baseIcon.replace(/\.png$/i, '@1x.png');
+
+    const path2x = isMob
+      ? path1x.replace(/@1x\.jpg$/i, '@2x.jpg')
+      : path1x.replace(/@1x\.png$/i, '@2x.png');
+
     return `<div class="album-icon" data-akey="${dataKey}" data-icon="${it.key}" title="${title}">
-      <img src="${icon}" alt="${title}">
+      <img src="${path1x}" srcset="${path2x} 2x" alt="${title}" width="60" height="60">
     </div>`;
   }).join('');
 
@@ -1654,11 +1763,22 @@ function isCoverWrapVisibleFor(key){
 
 /* ====== Галерея ====== */
 function setCoverImage(idx) {
-  if (!coverGalleryArr.length) return;
+  if (!Array.isArray(coverGalleryArr) || !coverGalleryArr.length) return;
   coverGalleryIdx = (idx + coverGalleryArr.length) % coverGalleryArr.length;
-  const img = document.getElementById('cover');
-  img.src = coverGalleryArr[coverGalleryIdx];
+
+  const item = coverGalleryArr[coverGalleryIdx];
+  const img  = document.getElementById('cover');
+  const wrap = document.getElementById('cover-wrap');
+
+  if (wrap && item && item.ar) {
+    // Подгоняем контейнер под точный аспект изображения
+    wrap.style.aspectRatio = String(item.ar);
+  }
+  if (img && item) {
+    img.src = item.src;
+  }
 }
+
 function startCoverAutoPlay() {
   if (coverAutoplay) clearInterval(coverAutoplay);
   coverAutoplay = setInterval(() => setCoverImage(coverGalleryIdx + 1), 5000);
@@ -3538,13 +3658,12 @@ function dismissIOSPrompt() {
 
 /* ====== Старт: показываем правильный экран ====== */
 (function boot(){
+  applyLogos();
   if (localStorage.getItem('promoPassed') === '1') {
-    // Быстрый старт
     document.getElementById('promocode-block').classList.add('hidden');
     document.getElementById('main-block').classList.remove('hidden');
     initializeMainUi();
   } else {
-    // Подготовим обложку первого альбома на экране промокода (после загрузки списка)
     loadAlbumsIndex().catch(()=>{});
   }
 })();
