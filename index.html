@@ -1979,7 +1979,7 @@ async function initializeMainUi() {
   })();
 }
 async function openRelizView(){
-  // «Новости»: квадратная галерея (albums/gallery/news) + соцссылки + ниже news.htm.
+  // «Новости»: квадратная галерея (albums/gallery/news) + соцссылки + ниже news.html.
   viewMode = 'reliz';
   setActiveAlbumIcon(SPECIAL_RELIZ_KEY);
   setAlbumHeaderTitle(SPECIAL_RELIZ_KEY);
@@ -1996,7 +1996,7 @@ async function openRelizView(){
   __currentGalleryVisible = true;
   setCoverWrapVisible(true);
 
-  // Контейнер для news.htm ниже соц. ссылок
+  // Контейнер для news.html ниже соц. ссылок
   clearRelizView();
   let cont = document.getElementById('reliz-container');
   if (!cont) {
@@ -2042,14 +2042,14 @@ async function openRelizView(){
     maybeStartCoverAutoAfterReady();
   }
 
-  // Вставляем страницу news.htm ниже (самостоятельный контент)
+  // Вставляем страницу news.html ниже (самостоятельный контент)
   try {
     const newsWrap = document.createElement('div');
     newsWrap.style.margin = '12px auto';
     newsWrap.style.maxWidth = '400px';
     newsWrap.innerHTML = `
       <iframe
-        src="./news.htm"
+        src="./news.html"
         title="Новости — Витрина Разбита"
         style="width:100%; min-height: 800px; border:1px solid rgba(255,255,255,.1); border-radius:10px; background:#0b0e15;"
         loading="lazy"
