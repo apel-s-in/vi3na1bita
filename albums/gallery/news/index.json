@@ -1,0 +1,6 @@
+{
+  "items": [
+    { "type": "html", "src": "news-01-baner.html" },
+    { "type": "img",  "src": "news-cover-02.png" }
+  ]
+}
