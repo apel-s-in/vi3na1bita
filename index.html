@@ -95,6 +95,39 @@
     #cover-gallery-arrow-left { left: 7px; }
     #cover-gallery-arrow-right { right: 7px; }
     #cover { width: 100%; max-width: 100%; border-radius: 12px; object-fit: contain; display: block; margin: 0; box-shadow: 0 4px 24px rgba(0,0,0,0.3); }
+    /* Универсальный слот галереи (картинка или HTML-баннер) */
+    #cover-slot {
+      width: 100%;
+      height: 100%;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #0b0e15;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+      position: relative;
+    }
+    #cover-slot img,
+    #cover-slot iframe {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border: 0;
+      background: #000;
+    }
+    #cover-slot img { object-fit: contain; }
+    #cover-slot iframe {
+      /* баннеры изолированы, без скриптов, чтобы не ломать страницу */
+      background: #000;
+    }
+
+    /* Стрелки до готовности галереи неактивны */
+    .cover-gallery-arrow {
+      visibility: hidden;
+      pointer-events: none;
+    }
+    #cover-wrap.gallery-nav-ready .cover-gallery-arrow {
+      visibility: visible;
+      pointer-events: auto;
+    }
 
     /* Лого */
     .logo-bottom {
@@ -597,7 +630,10 @@
         <button class="cover-gallery-arrow" id="cover-gallery-arrow-left" title="Назад" aria-label="Предыдущая обложка">
           <svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="16" fill="#23252e" opacity="0.65"/><polyline points="20,10 13,17 20,24" fill="none" stroke="#fff" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <img id="cover" src="" alt="Обложка альбома" draggable="false"/>
+
+        <!-- Универсальный слот: сюда подставляем <img> или <iframe> (для HTML баннеров) -->
+        <div id="cover-slot" aria-label="Обложка альбома"></div>
+
         <button class="cover-gallery-arrow" id="cover-gallery-arrow-right" title="Вперёд" aria-label="Следующая обложка">
           <svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="16" fill="#23252e" opacity="0.65"/><polyline points="14,10 21,17 14,24" fill="none" stroke="#fff" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
@@ -1031,6 +1067,45 @@ function parseAspectFromFileName(url) {
    albums/gallery/NN/NN-cover-XX.jpg|png */
 const CENTRAL_GALLERY_BASE = './albums/gallery/';
 const CENTRAL_GALLERY_MAX = 20; // сканируем 01..20; можно увеличить
+/* Переопределения папок в центральном репозитории:
+   - krevetochka -> 00
+   - избранное -> stars
+   - новости   -> news */
+const CENTRAL_GALLERY_OVERRIDES = {
+  'krevetochka': '00',
+  [SPECIAL_FAVORITES_KEY]: 'stars',
+  [SPECIAL_RELIZ_KEY]: 'news'
+};
+
+/* Флаги и ожидания для корректного старта автопрокрутки */
+let galleryAllLoaded = false;     // вся галерея (все элементы) догружены
+let galleryRotationStarted = false; // автопрокрутка запущена
+function markGalleryNotReady() {
+  galleryAllLoaded = false;
+  galleryRotationStarted = false;
+  const wrap = document.getElementById('cover-wrap');
+  if (wrap) wrap.classList.remove('gallery-nav-ready');
+  if (coverAutoplay) { clearInterval(coverAutoplay); coverAutoplay = null; }
+}
+/* Плеер считается "готов", если:
+   - есть audio и он имеет метаданные (readyState>=2), либо
+   - audio вообще ещё нет (тогда не блокируем галерею). */
+function isPlayerUiReady() {
+  const a = document.getElementById('audio');
+  return !a || (a.readyState >= 2);
+}
+/* Старт автопрокрутки на 5 сек позже полной готовности */
+function maybeStartCoverAutoAfterReady() {
+  if (galleryRotationStarted) return;
+  if (!galleryAllLoaded) return;
+  if (!isPlayerUiReady()) return;
+  galleryRotationStarted = true;
+  setTimeout(() => {
+    const wrap = document.getElementById('cover-wrap');
+    if (wrap) wrap.classList.add('gallery-nav-ready'); // показываем стрелки
+    startCoverAutoPlay();
+  }, 5000);
+}
 
 /* Порядковый номер альбома в списке albumsIndex => "01","02",... */
 function albumOrderIndexStr(albumKey) {
@@ -1040,82 +1115,66 @@ function albumOrderIndexStr(albumKey) {
     return String(i + 1).padStart(2, '0');
   } catch { return null; }
 }
+/* Идентификатор папки в центральной галерее:
+   - если есть override -> берём его
+   - иначе -> порядковый номер NN */
+function centralIdForAlbumKey(albumKey) {
+  if (CENTRAL_GALLERY_OVERRIDES[albumKey]) {
+    return CENTRAL_GALLERY_OVERRIDES[albumKey];
+  }
+  return albumOrderIndexStr(albumKey); // "01","02"... или null
+}
 
-/* Мгновенный quick cover для альбома: сначала центральный репо (NN/NN-cover-01), затем фолбэк Cover.jpg/png в самом альбоме */
+/* Установить мгновенно картинку в слот (без ожидания галереи) */
+function setQuickCoverSrc(url) {
+  try {
+    const slot = document.getElementById('cover-slot');
+    if (!slot) return;
+    slot.innerHTML = '';
+    const img = new Image();
+    img.decoding = 'async';
+    img.loading = 'eager';
+    img.referrerPolicy = 'no-referrer';
+    img.alt = 'Обложка альбома';
+    img.src = url;
+    slot.appendChild(img);
+  } catch {}
+}
+
 function ensureQuickCoverForAlbum(meta) {
   try {
     const base = normalizeBase(meta.base);
-    const img = document.getElementById('cover');
-    if (!img) return;
-
-    const nn = albumOrderIndexStr(meta.key);
-    if (nn) {
-      const centralJpg = `${CENTRAL_GALLERY_BASE}${nn}/${nn}-cover-01.jpg`;
-      const centralPng = `${CENTRAL_GALLERY_BASE}${nn}/${nn}-cover-01.png`;
-      img.referrerPolicy = 'no-referrer';
-      img.decoding = 'async';
-      img.loading = 'eager';
-      img.src = centralJpg;
-      img.onerror = () => {
-        img.onerror = null;
-        img.src = centralPng;
-        img.onerror = () => { img.onerror = null; ensureQuickCover(base); }; // фолбэк к обложке альбома
+    const id = centralIdForAlbumKey(meta.key);
+    if (id) {
+      const centralJpg = `${CENTRAL_GALLERY_BASE}${id}/${id}-cover-01.jpg`;
+      const centralPng = `${CENTRAL_GALLERY_BASE}${id}/${id}-cover-01.png`;
+      // Сначала пробуем jpg, если нет — png, если нет — фолбэк в альбом
+      const probe = new Image();
+      probe.onload = () => setQuickCoverSrc(centralJpg);
+      probe.onerror = () => {
+        const probe2 = new Image();
+        probe2.onload = () => setQuickCoverSrc(centralPng);
+        probe2.onerror = () => ensureQuickCover(base);
+        probe2.src = centralPng;
       };
+      probe.src = centralJpg;
       return;
     }
-    // Если nn не найден — просто фолбэк на обложки альбома
     ensureQuickCover(base);
   } catch(e) {}
 }
-
-/* Собрать список централизованных обложек для данного альбома (по номеру NN) */
-async function buildCentralGalleryList(albumKey, signal) {
-  const nn = albumOrderIndexStr(albumKey);
-  if (!nn) return [];
-  const out = [];
-  let missStreak = 0;
-
-  // Кандидаты 01..CENTRAL_GALLERY_MAX, для каждого — jpg или png (приоритет jpg)
-  for (let i = 1; i <= CENTRAL_GALLERY_MAX; i++) {
-    if (signal?.aborted) return out;
-    const xx = String(i).padStart(2, '0');
-    const jpg = `${CENTRAL_GALLERY_BASE}${nn}/${nn}-cover-${xx}.jpg`;
-    const png = `${CENTRAL_GALLERY_BASE}${nn}/${nn}-cover-${xx}.png`;
-
-    // Проверяем jpg и png параллельно
-    const [okJpg, okPng] = await Promise.all([probeImage(jpg, 1200), probeImage(png, 1200)]);
-    const picked = okJpg ? jpg : (okPng ? png : null);
-
-    if (picked) {
-      out.push({ src: picked, ar: parseAspectFromFileName(picked) });
-      missStreak = 0;
-    } else {
-      missStreak++;
-      // ранняя остановка: два подряд пропуска — прерываем сканирование
-      if (missStreak >= 2) break;
-    }
-  }
-  return out;
-}
-
-/* Мгновенная установка обложки: пробуем Cover.jpg, если ошибка — Cover.png.
-   Не ждём готовности галереи. */
 function ensureQuickCover(baseUrl) {
   try {
-    const img = document.getElementById('cover');
-    if (!img) return;
     const jpg = absJoin(baseUrl, 'Cover.jpg');
     const png = absJoin(baseUrl, 'Cover.png');
-    img.referrerPolicy = 'no-referrer';
-    img.decoding = 'async';
-    img.loading = 'eager';
-    img.src = jpg;
-    img.onerror = () => { img.onerror = null; img.src = png; };
+    const probe = new Image();
+    probe.onload = () => setQuickCoverSrc(jpg);
+    probe.onerror = () => setQuickCoverSrc(png);
+    probe.src = jpg;
   } catch(e) {}
 }
-
-/* Быстрая проверка наличия изображения через <img>, без HEAD.
-   Успех: onload; Ошибка/таймаут: onerror/timeout. */
+  
+/* Проверка наличия картинки через <img> */
 function probeImage(url, timeout = 1200) {
   return new Promise(resolve => {
     const img = new Image();
@@ -1128,16 +1187,27 @@ function probeImage(url, timeout = 1200) {
     img.src = url;
   });
 }
+/* Проверка наличия HTML (баннера) через fetch */
+async function probeHtml(url, timeout = 1500) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeout);
+  try {
+    const r = await fetch(url, { method: 'GET', signal: ctrl.signal, cache: 'no-cache' });
+    return !!(r && (r.ok || r.status === 304));
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(t);
+  }
+}
 
-/* Кандидаты обложек (минимальный список, чтобы не тратить время впустую) */
+/* Кандидаты для файлов Cover / Cover01 / ... */
 function coverCandidatesShort(baseUrl, baseName) {
   return [
     absJoin(baseUrl, `${baseName}.jpg`),
     absJoin(baseUrl, `${baseName}.png`)
   ];
 }
-
-/* Расширенный список (редко понадобится; запускается параллельно и не блокирует UI) */
 function coverCandidatesExtended(baseUrl, baseName) {
   const exts = ['jpg','png'];
   const tokens = ['16x9','9x16','3x2','2x3','4x3','3x4','1x1'];
@@ -1149,19 +1219,13 @@ function coverCandidatesExtended(baseUrl, baseName) {
   }
   return urls;
 }
-
-/* Параллельный поиск первой существующей обложки для базового имени.
-   Сначала пробуем короткий список (jpg/png) параллельно; если не нашли — запускаем расширенный. */
 async function pickFirstExistingCover(baseUrl, baseName) {
   const short = coverCandidatesShort(baseUrl, baseName);
-  // Пробуем оба кандидата параллельно
   const shortResults = await Promise.all(short.map(async u => (await probeImage(u)) ? u : null));
   const foundShort = shortResults.find(Boolean);
   if (foundShort) return foundShort;
 
-  // Фон: расширенный поиск (не блокирует общий рендер, но даём шанс)
   const ext = coverCandidatesExtended(baseUrl, baseName);
-  // Ограничим количество одновременных проверок, чтобы не засыпать сеть
   const CONC = 4;
   for (let i = 0; i < ext.length; i += CONC) {
     const chunk = ext.slice(i, i + CONC);
@@ -1172,9 +1236,65 @@ async function pickFirstExistingCover(baseUrl, baseName) {
   return null;
 }
 
-/* Сборка галереи: сперва центральный репозиторий (если есть), затем фолбэк к файлам альбома. */
+/* Центральная галерея: картинки + HTML-баннеры.
+   Для id: "00", "01"...; "stars"; "news".
+   Ищем порядково 01..CENTRAL_GALLERY_MAX.
+   Поддерживаем имена:
+   - <id>-cover-XX.jpg|png   (картинки)
+   - <id>-banner-XX.html     (баннеры)
+   - <id>-XX-banner.html     (альтернативно)
+   - <id>-XX-baner.html      (с одним 'n', как в примере)
+   ВАЖНО: чтобы находились датированные файлы вида news-01-baner-2025-10-01.html,
+          добавьте для них символьный дубликат без даты: news-01-baner.html (см. инструкция ниже). */
+async function buildCentralGalleryList(albumKey, signal) {
+  const id = centralIdForAlbumKey(albumKey);
+  if (!id) return [];
+
+  const baseDir = `${CENTRAL_GALLERY_BASE}${id}/`;
+  const out = [];
+  let missStreak = 0;
+
+  for (let i = 1; i <= CENTRAL_GALLERY_MAX; i++) {
+    if (signal?.aborted) return out;
+    const xx = String(i).padStart(2, '0');
+
+    // images
+    const jpg = `${baseDir}${id}-cover-${xx}.jpg`;
+    const png = `${baseDir}${id}-cover-${xx}.png`;
+
+    // html banners (несколько шаблонов)
+    const bn1 = `${baseDir}${id}-banner-${xx}.html`;
+    const bn2 = `${baseDir}${id}-${xx}-banner.html`;
+    const bn3 = `${baseDir}${id}-${xx}-baner.html`; // «baner», как в примере
+
+    const [okJpg, okPng, okH1, okH2, okH3] = await Promise.all([
+      probeImage(jpg, 1100),
+      probeImage(png, 1100),
+      probeHtml(bn1, 1100),
+      probeHtml(bn2, 1100),
+      probeHtml(bn3, 1100),
+    ]);
+
+    if (okJpg || okPng || okH1 || okH2 || okH3) {
+      if (okJpg) out.push({ type: 'img', src: jpg, ar: parseAspectFromFileName(jpg) });
+      else if (okPng) out.push({ type: 'img', src: png, ar: parseAspectFromFileName(png) });
+      else {
+        const htmlSrc = okH1 ? bn1 : okH2 ? bn2 : bn3;
+        out.push({ type: 'html', src: htmlSrc, ar: 1 });
+      }
+      missStreak = 0;
+    } else {
+      missStreak++;
+      if (missStreak >= 2) break; // досрочная остановка
+    }
+  }
+  return out;
+}
+
+/* Общая сборка галереи для альбома:
+   1) пробуем центральное хранилище (картинки/баннеры)
+   2) фолбэк к файлам альбома (только картинки) */
 async function buildCoverGalleryList(albumKey, baseUrl, signal) {
-  // 1) Централизованная галерея
   try {
     const central = await buildCentralGalleryList(albumKey, signal);
     if (!signal?.aborted && Array.isArray(central) && central.length) {
@@ -1182,19 +1302,83 @@ async function buildCoverGalleryList(albumKey, baseUrl, signal) {
     }
   } catch {}
 
-  // 2) Файлы у самого альбома: Cover, Cover01, ...
   try {
     const bases = ['Cover', 'Cover01', 'Cover02', 'Cover03'];
     const picks = await Promise.all(bases.map(b => pickFirstExistingCover(baseUrl, b)));
     const gallery = [];
     for (let i = 0; i < bases.length; i++) {
       const src = picks[i];
-      if (src) gallery.push({ src, ar: parseAspectFromFileName(src) });
+      if (src) gallery.push({ type: 'img', src, ar: parseAspectFromFileName(src) });
     }
     return gallery;
   } catch {
     return [];
   }
+}
+
+/* Рендер текущего элемента галереи в слот */
+function renderCoverItem(item) {
+  const slot = document.getElementById('cover-slot');
+  const wrap = document.getElementById('cover-wrap');
+  if (!slot || !item) return;
+
+  // Адаптируем aspect-ratio контейнера
+  if (wrap && item.ar) {
+    wrap.style.aspectRatio = String(item.ar);
+  }
+
+  slot.innerHTML = '';
+  if (item.type === 'html') {
+    // Встраиваем как sandbox iframe (без скриптов, без top-navigation)
+    const ifr = document.createElement('iframe');
+    ifr.setAttribute('sandbox', 'allow-same-origin allow-popups allow-forms'); // без allow-scripts
+    ifr.src = item.src;
+    slot.appendChild(ifr);
+  } else {
+    const img = new Image();
+    img.decoding = 'async';
+    img.loading = 'eager';
+    img.referrerPolicy = 'no-referrer';
+    img.alt = 'Обложка альбома';
+    img.src = item.src;
+    slot.appendChild(img);
+  }
+}
+
+/* Переключение текущего слайда */
+function setCoverImage(idx) {
+  if (!Array.isArray(coverGalleryArr) || !coverGalleryArr.length) return;
+  coverGalleryIdx = (idx + coverGalleryArr.length) % coverGalleryArr.length;
+  const item = coverGalleryArr[coverGalleryIdx];
+  if (item) renderCoverItem(item);
+}
+
+/* Запускаем автопрокрутку только когда maybeStartCoverAutoAfterReady() её разрешит */
+function startCoverAutoPlay() {
+  if (coverAutoplay) clearInterval(coverAutoplay);
+  coverAutoplay = setInterval(() => setCoverImage(coverGalleryIdx + 1), 5000);
+}
+
+/* Полная предзагрузка всех элементов (картинки — через decode(), html — GET кэш),
+   чтобы и авто, и ручной режим стали доступны только после полной готовности */
+async function preloadGalleryItems(items, signal) {
+  const tasks = items.map(async it => {
+    if (signal?.aborted) return;
+    if (it.type === 'img') {
+      await new Promise(resolve => {
+        const im = new Image();
+        im.decoding = 'async';
+        im.onload = () => resolve();
+        im.onerror = () => resolve(); // не блокируем из-за одной ошибки
+        im.src = it.src;
+      });
+    } else if (it.type === 'html') {
+      try {
+        await fetch(it.src, { cache: 'no-cache', signal });
+      } catch {}
+    }
+  });
+  await Promise.allSettled(tasks);
 }
 
 async function getAlbumConfigByKey(albumKey){
@@ -1327,6 +1511,9 @@ async function loadAlbumByKey(key) {
   const meta = albumByKey(key);
   if (!meta) { NotificationSystem.error('Альбом не найден'); return; }
 
+  // Пока грузим — запрещаем стрелки/автопрокрутку
+  markGalleryNotReady();
+
   currentAlbumKey = key;
   const base = normalizeBase(meta.base);
   albumBase = base;
@@ -1344,15 +1531,29 @@ async function loadAlbumByKey(key) {
   if (albumConfigCache[key]?.config) {
     const cached = albumConfigCache[key];
     await applyAlbumConfig(cached.base, cached.config, { skipCovers: true, signal });
-    // Фоном собираем галерею (с учётом abort)
-    buildCoverGalleryList(key, base, signal).then(gal => {
+
+    // Быстрый первый кадр мгновенно из центрального/фолбэк уже поставили ensureQuickCoverForAlbum()
+    // Теперь — собираем полную галерею и предзагружаем
+    buildCoverGalleryList(key, base, signal).then(async gal => {
       if (signal.aborted) return;
       if (Array.isArray(gal) && gal.length) {
         coverGalleryArr = gal;
         coverGalleryIdx = 0;
-        setCoverImage(coverGalleryIdx);
+        setCoverImage(coverGalleryIdx); // сразу переключим слот на первый валидный элемент
+        await preloadGalleryItems(coverGalleryArr, signal);
+        if (signal.aborted) return;
+        galleryAllLoaded = true;
+        maybeStartCoverAutoAfterReady();
+      } else {
+        // жёсткий фолбэк на Cover.png
+        coverGalleryArr = [{ type:'img', src: absJoin(base, 'Cover.png'), ar: 1 }];
+        coverGalleryIdx = 0;
+        setCoverImage(0);
+        galleryAllLoaded = true;
+        maybeStartCoverAutoAfterReady();
       }
     }).catch(()=>{});
+
     warmupOtherAlbums(key);
     return;
   }
@@ -1474,6 +1675,16 @@ async function warmupOtherAlbums(currentKey) {
         const l1 = document.createElement('link'); l1.rel = 'prefetch'; l1.as = 'image'; l1.href = jpg; document.head.appendChild(l1);
         const l2 = document.createElement('link'); l2.rel = 'prefetch'; l2.as = 'image'; l2.href = png; document.head.appendChild(l2);
       } catch {}
+     // Центральная первая (если есть override/номер)
+     try {
+       const cid = centralIdForAlbumKey(key);
+       if (cid) {
+         const cjpg = `${CENTRAL_GALLERY_BASE}${cid}/${cid}-cover-01.jpg`;
+         const cpng = `${CENTRAL_GALLERY_BASE}${cid}/${cid}-cover-01.png`;
+         const l3 = document.createElement('link'); l3.rel = 'prefetch'; l3.as = 'image'; l3.href = cjpg; document.head.appendChild(l3);
+         const l4 = document.createElement('link'); l4.rel = 'prefetch'; l4.as = 'image'; l4.href = cpng; document.head.appendChild(l4);
+       }
+     } catch {} 
     }
   } catch {}
 }
@@ -1608,8 +1819,16 @@ function initializeMainUi() {
     }
 
     // Галерея
-    document.getElementById('cover-gallery-arrow-left').onclick = () => { setCoverImage(coverGalleryIdx - 1); startCoverAutoPlay(); };
-    document.getElementById('cover-gallery-arrow-right').onclick = () => { setCoverImage(coverGalleryIdx + 1); startCoverAutoPlay(); };
+    document.getElementById('cover-gallery-arrow-left').onclick = () => {
+      if (!galleryAllLoaded) return;
+      setCoverImage(coverGalleryIdx - 1);
+      startCoverAutoPlay();
+    };
+    document.getElementById('cover-gallery-arrow-right').onclick = () => {
+      if (!galleryAllLoaded) return;
+      setCoverImage(coverGalleryIdx + 1);
+      startCoverAutoPlay();
+    };
     let startX = null;
     const el = document.getElementById('cover-wrap');
     el.addEventListener('touchstart', e => { startX = e.touches[0].clientX; });
@@ -1617,6 +1836,7 @@ function initializeMainUi() {
       if (startX === null) return;
       const dx = e.changedTouches[0].clientX - startX;
       if (Math.abs(dx) > 30) {
+        if (!galleryAllLoaded) { startX = null; return; }
         if (dx > 0) setCoverImage(coverGalleryIdx - 1); else setCoverImage(coverGalleryIdx + 1);
         startCoverAutoPlay();
       }
