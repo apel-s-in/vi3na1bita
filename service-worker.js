@@ -11,7 +11,7 @@ const CORE_ASSETS = [
   './index.html',
   './manifest.json',
   './albums.json',
-  './news.htm',
+  './news.html',
   './img/logo.png',
   './img/star.png',
   './img/star2.png',
