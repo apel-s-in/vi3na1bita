@@ -1,0 +1,8 @@
+{
+  "items": [
+    { "type": "img", "src": "01-cover-01.jpg" },
+    { "type": "img", "src": "01-cover-02.jpg" },
+    { "type": "img", "src": "01-cover-03.jpg" },
+    { "type": "img", "src": "01-cover-04.jpg" }
+  ]
+}
