@@ -76,86 +76,29 @@
     /* Основной блок */
     #main-block { max-width: 420px; margin: 0 auto; flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; width: 100%; padding: 0 10px; }
     header { width: 100%; text-align: center; margin: 0 auto; }
-    /* Крупный выпадающий заголовок-выбор альбома */
-    .album-title-button{
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      gap:10px;
-      width:100%;
-      max-width:400px;
-      margin: 18px auto 2px auto;
-      background: none;
-      border: none;
+    /* Заголовок активного раздела над галереей */
+    .active-album-title{
+      width: 100%;
+      max-width: 400px;
+      margin: 18px auto 6px auto;
+      text-align: center;
       color: #eaf2ff;
       font-weight: 900;
       letter-spacing: .01em;
       line-height: 1.15;
-      text-align: center;
-      cursor: pointer;
-      padding: 4px 6px;
       text-shadow: 0 1px 0 rgba(0,0,0,.35);
-      white-space: nowrap;         /* НЕ переносить выбранный заголовок */
-    }
-    .album-title-button #album-title-text{
-      display:inline-block;
-      max-width: calc(100% - 28px);/* оставить место под стрелку */
+      font-size: clamp(18px, 4.6vw, 24px);
+      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
     }
-    .album-title-caret{
-      transition: transform .18s ease;
-      opacity: .9;
-    }
-    #album-title-button[aria-expanded="true"] .album-title-caret{
-      transform: rotate(180deg);
-    }
-
-    /* Выпадающее меню */
-    .album-menu{
-      width:100%;
-      max-width:400px;
-      margin: 8px auto 0 auto;
-      display:none;                /* по умолчанию скрыто */
-      background: transparent;
-      border-radius: 0;
-      font-size: inherit;          /* как у заголовка */
-    }
-    .album-menu.open{ display:block; }
-    .album-menu-item{
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      padding: 8px 6px;
-      color: #cfe3ff;
-      font-weight: 900;
-      letter-spacing: .01em;
-      cursor: pointer;
-      user-select: none;
-      font-size: inherit;
-      white-space: nowrap;         /* НЕ переносить строки (например КРЕВЕツTOCHKA) */
-    }
-    .album-menu-item:hover{
-      color:#fff;
-      background: rgba(255,255,255,.05);
-    }
-    /* Акцент для «Избранного» (как на макете со звёздами) */
-    .album-menu-item.fav{
+    .active-album-title.fav{
       color: #ffd166;
-      text-shadow: 0 1px 0 rgba(0,0,0,.35);
+      letter-spacing: .06em;
     }
-
-    /* Подсветка активного НЕ используется — активная позиция исчезает из списка */
-    .album-menu-item.active{ background: none; }
-
-    /* Выбор альбома */
-    .album-picker {
-      width: 100%; max-width: 400px; margin: 18px auto 0 auto; display:flex; gap:8px; align-items:center; justify-content:center;
-    }
-    .album-picker select {
-      width: 100%; max-width: 400px; background: #1f2533; color:#cfe3ff; border:1px solid var(--border-color);
-      padding:10px 12px; border-radius:10px; font-weight:700; letter-spacing:.02em; cursor:pointer;
+    .active-album-title.news{
+      color: #8ab8fd;
+      letter-spacing: .02em;
     }
 
     /* Обложка/галерея */
@@ -692,19 +635,14 @@
 
   <div id="main-block" class="hidden">
     <header>
-      <!-- Выбор альбома -->
-      <div class="album-picker">
-        <button id="album-title-button" class="album-title-button" aria-haspopup="listbox" aria-expanded="false">
-          <span id="album-title-text">—</span>
-          <svg class="album-title-caret" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
-            <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </button>
-        <div id="album-menu" class="album-menu" role="listbox" aria-label="Выбор альбома"></div>
-        <!-- Скрытый select оставляем для обратной совместимости с кодом -->
-        <select id="album-select" aria-label="Выбор альбома" style="display:none;"></select>
-      </div>
+      <!-- Заголовок активного раздела (альбом / ИЗБРАННОЕ / НОВОСТИ) -->
+      <div id="active-album-title" class="active-album-title">—</div>
+
+      <!-- Ряд иконок альбомов (переключение только здесь) -->
       <div id="album-icons" class="album-icons" aria-label="Альбомы"></div>
+
+      <!-- Скрытый select оставляем только для внутренней логики (пользователь его не видит) -->
+      <select id="album-select" aria-label="Выбор альбома" style="display:none;"></select>
 
       <div id="cover-wrap">
         <button class="cover-gallery-arrow" id="cover-gallery-arrow-left" title="Назад" aria-label="Предыдущая обложка">
@@ -1701,7 +1639,7 @@ async function loadAlbumByKey(key) {
   } finally {
     setActiveAlbumIcon(currentAlbumKey);
     setCoverWrapVisible(__currentGalleryVisible); // видимость галереи определяется нашей логикой
-    setAlbumSelectorByKey(currentAlbumKey);
+    setAlbumHeaderTitle(currentAlbumKey);
   }
 }
 
@@ -1884,9 +1822,11 @@ async function initializeMainUi() {
     const startKey = (params.get('view') === 'favorites') ? SPECIAL_FAVORITES_KEY
                         : (params.get('view') === 'reliz') ? SPECIAL_RELIZ_KEY
                         : (toLoad || first);
-    setAlbumSelectorByKey(startKey);
 
-    // сразу подсветим активную иконку под заголовком
+    // Заголовок раздела
+    setAlbumHeaderTitle(startKey === SPECIAL_FAVORITES_KEY || startKey === SPECIAL_RELIZ_KEY ? startKey : (sel.value || startKey));
+
+    // Подсветим активную иконку
     setActiveAlbumIcon(startKey === SPECIAL_FAVORITES_KEY || startKey === SPECIAL_RELIZ_KEY ? startKey : sel.value);
 
     sel.onchange = () => {
@@ -2043,7 +1983,7 @@ async function openRelizView(){
   // «Новости»: квадратная галерея (albums/gallery/news) + соцссылки + ниже news.htm.
   viewMode = 'reliz';
   setActiveAlbumIcon(SPECIAL_RELIZ_KEY);
-  setAlbumSelectorByKey(SPECIAL_RELIZ_KEY);
+  setAlbumHeaderTitle(SPECIAL_RELIZ_KEY);
 
   // UI
   const list = document.getElementById('track-list');
@@ -2199,7 +2139,7 @@ async function openFavoritesView(){
   viewMode = 'favorites';
   clearRelizView();
   setActiveAlbumIcon(SPECIAL_FAVORITES_KEY);
-  setAlbumSelectorByKey(SPECIAL_FAVORITES_KEY);
+  setAlbumHeaderTitle(SPECIAL_FAVORITES_KEY);
 
   // 0) Сохраним плеер: если он был под треком обычного альбома, перенесём в now-playing,
   // чтобы мы не удалили его вместе со списком.
@@ -2545,148 +2485,28 @@ function buildAlbumIcons(){
   // Подсветка текущего альбома (если уже выбран)
   setActiveAlbumIcon(currentAlbumKey || document.getElementById('album-select')?.value || (albumsIndex[0]?.key || ''));
 }
-/* Дубликат старых функций селектора удалён — см. актуальные реализации ниже */
-/* Текущий «выбранный ключ» для заголовка селектора */
-let __albumSelectorKey = null;
-/* Запоминаем вычисленный размер шрифта заголовка, чтобы применить к списку */
-let __albumTitleFontPx = 24;
+/* Заголовок активного раздела (вместо селектора) */
+function setAlbumHeaderTitle(key) {
+  const el = document.getElementById('active-album-title');
+  if (!el) return;
+  let title = '—';
+  let cls = '';
 
-/* Собрать список пунктов меню в правильном порядке (как ICON_ALBUMS_ORDER) */
-function getMenuItemsInOrder() {
-  return ICON_ALBUMS_ORDER.map(it => ({ key: it.key, title: it.title }));
-}
-
-function setAlbumTitleText(title) {
-  const btn = document.getElementById('album-title-button');
-  const span = document.getElementById('album-title-text');
-  const text = title || '—';
-  if (span) span.textContent = text;
-  else if (btn) btn.textContent = text;
-  if (btn) btn.setAttribute('title', text);
-}
-
-/* Подбор размера шрифта для заголовка; применять тот же размер к .album-menu */
-function computeTitleFontSize() {
-  try {
-    const btn = document.getElementById('album-title-button');
-    const menu = document.getElementById('album-menu');
-    if (!btn || !menu) return;
-    const items = getMenuItemsInOrder();
-    const longest = items.reduce((a, b) => (String(b.title||'').length > String(a||'').length ? b.title : a), '');
-    const maxWidth = Math.min(400, btn.clientWidth || 400) - 8;
-    const meas = document.createElement('span');
-    meas.style.position = 'absolute';
-    meas.style.left = '-999999px';
-    meas.style.top = '-999999px';
-    meas.style.whiteSpace = 'nowrap';
-    meas.style.fontWeight = '900';
-    meas.style.letterSpacing = '.01em';
-    meas.style.fontFamily = getComputedStyle(btn).fontFamily;
-    document.body.appendChild(meas);
-    let size = 28;
-    meas.style.fontSize = size + 'px';
-    meas.textContent = longest || '—';
-    while (meas.offsetWidth > maxWidth && size > 18) {
-      size -= 1;
-      meas.style.fontSize = size + 'px';
-    }
-    document.body.removeChild(meas);
-    btn.style.fontSize = size + 'px';
-    menu.style.fontSize = size + 'px';
-    __albumTitleFontPx = size;
-  } catch {}
-}
-
-/* Перестроить меню так, чтобы показать ТОЛЬКО «оставшиеся» пункты */
-function rebuildAlbumMenu(currentKey) {
-  __albumSelectorKey = currentKey;
-
-  const menu = document.getElementById('album-menu');
-  const btn = document.getElementById('album-title-button');
-  if (!menu || !btn) return;
-
-  const all = getMenuItemsInOrder();
-  const current = all.find(x => x.key === currentKey) || all[0] || { title: '—' };
-  setAlbumTitleText(current.title);
-  computeTitleFontSize();
-
-  // Формируем список без текущего ключа
-  const rest = all.filter(x => x.key !== currentKey);
-  menu.innerHTML = rest.map(it => {
-    const extra = (it.key === SPECIAL_FAVORITES_KEY) ? ' album-menu-item fav' : ' album-menu-item';
-    return `<div class="${extra}" data-key="${it.key}" role="option" aria-selected="false">${it.title}</div>`;
-  }).join('');
-
-  // Открыть/закрыть выпадающий список
-  btn.onclick = () => {
-    const open = menu.classList.toggle('open');
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-  };
-// Закрывать меню по клику вне
-function onDocClick(e){
-  const opened = menu.classList.contains('open');
-  if (!opened) return;
-  const within = e.target === btn || btn.contains(e.target) || e.target === menu || menu.contains(e.target);
-  if (!within) {
-    menu.classList.remove('open');
-    btn.setAttribute('aria-expanded', 'false');
+  if (key === SPECIAL_FAVORITES_KEY) {
+    title = '★ ★ ★ ИЗБРАННОЕ ★ ★ ★';
+    cls = 'fav';
+  } else if (key === SPECIAL_RELIZ_KEY) {
+    title = 'НОВОСТИ';
+    cls = 'news';
+  } else {
+    const meta = albumByKey(key);
+    // Приоритет — название из albums.json; если нет — из config.json
+    title = meta?.title || (config?.albumName || 'Альбом');
   }
-}
-document.addEventListener('click', onDocClick, { passive: true });
-// На всякий случай удалять слушатель при перестройке меню
-menu.__cleanupOutside && menu.__cleanupOutside();
-menu.__cleanupOutside = () => document.removeEventListener('click', onDocClick);
 
-  // Обработчик выбора
-  menu.querySelectorAll('.album-menu-item').forEach(el => {
-    el.onclick = async () => {
-      const key = el.getAttribute('data-key');
-      if (!key) return;
-
-      // Скрытый select для совместимости
-      const sel = document.getElementById('album-select');
-
-      if (key === SPECIAL_FAVORITES_KEY) {
-        if (sel) sel.value = albumsIndex[0]?.key || '';
-        await openFavoritesView();
-        setActiveAlbumIcon(SPECIAL_FAVORITES_KEY);
-        rebuildAlbumMenu(SPECIAL_FAVORITES_KEY);
-      } else if (key === SPECIAL_RELIZ_KEY) {
-        if (sel) sel.value = albumsIndex[0]?.key || '';
-        await openRelizView();
-        setActiveAlbumIcon(SPECIAL_RELIZ_KEY);
-        rebuildAlbumMenu(SPECIAL_RELIZ_KEY);
-      } else {
-        // Обычный альбом
-        const real = albumByKey(key) ? key : resolveRealAlbumKey(key);
-        if (!real || !albumByKey(real)) {
-          NotificationSystem.error('Альбом не найден');
-        } else {
-          if (sel) sel.value = real;
-          viewMode = 'album';
-          clearRelizView();
-          document.getElementById('track-list').style.display = '';
-          document.getElementById('cover-wrap').style.display = '';
-          __currentGalleryVisible = true;
-          setCoverWrapVisible(true);
-          await loadAlbumByKey(real);
-          setActiveAlbumIcon(real);
-          rebuildAlbumMenu(real);
-        }
-      }
-      // Закрыть список
-      menu.classList.remove('open');
-      btn.setAttribute('aria-expanded', 'false');
-    };
-  });
-
-  window.addEventListener('resize', () => computeTitleFontSize());
-}
-
-/* Внешняя точка: установить выбранный пункт в заголовке и показать «остальные» пункты */
-function setAlbumSelectorByKey(key) {
-  const k = key || albumsIndex[0]?.key || null;
-  rebuildAlbumMenu(k);
+  el.textContent = title;
+  el.title = title;
+  el.className = 'active-album-title' + (cls ? (' ' + cls) : '');
 }
 
 function setActiveAlbumIcon(key){
@@ -2703,13 +2523,13 @@ function onAlbumIconClick(key){
   if (key === SPECIAL_FAVORITES_KEY) {
     openFavoritesView();
     setActiveAlbumIcon(key);
-    setAlbumSelectorByKey(SPECIAL_FAVORITES_KEY);
+    setAlbumHeaderTitle(SPECIAL_FAVORITES_KEY);
     return;
   }
   if (key === SPECIAL_RELIZ_KEY) {
     openRelizView(); // «НОВОСТИ»
     setActiveAlbumIcon(key);
-    setAlbumSelectorByKey(SPECIAL_RELIZ_KEY);
+    setAlbumHeaderTitle(SPECIAL_RELIZ_KEY);
     return;
   }
 
@@ -2748,7 +2568,7 @@ function onAlbumIconClick(key){
   setCoverWrapVisible(true);
 
   loadAlbumByKey(key).then(()=>{
-    setAlbumSelectorByKey(key);
+    setAlbumHeaderTitle(key);
   });
 }
 
