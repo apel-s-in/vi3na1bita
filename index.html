@@ -98,23 +98,28 @@
       max-width:400px;
       margin: 6px auto 0 auto;
       display:none;           /* по умолчанию скрыто */
-      background: transparent; /* родной тёмный фон страницы */
-      border-radius: 0;       /* без карточек/рамок */
+      background: transparent;
+      border-radius: 0;
+      /* Важное: пункты меню наследуют размер шрифта заголовка */
+      font-size: inherit;
     }
     .album-menu.open{ display:block; }
     .album-menu-item{
       display:flex;
       align-items:center;
       justify-content:center;
-      padding: 10px 6px;
+      padding: 8px 6px;
       color: #cfe3ff;
-      font-weight: 800;
+      font-weight: 900;            /* как у заголовка */
       letter-spacing: .01em;
       cursor: pointer;
       user-select: none;
+      /* размер как у заголовка */
+      font-size: inherit;
     }
     .album-menu-item:hover{ color:#fff; background: rgba(255,255,255,.05); }
-    .album-menu-item.active{ color:#fff; background: rgba(232,1,0,.18); }
+    /* Подсветка активного НЕ используется — пункт активного альбома исчезает из списка */
+    .album-menu-item.active{ background: none; }
 
     /* Выбор альбома */
     .album-picker {
@@ -1114,6 +1119,10 @@ const CENTRAL_GALLERY_MAX_BY_ID = {
   'news': 6,
   'stars': 12
 };
+/* Требовать index.json для галерей (нулевые задержки и предсказуемый порядок).
+   Если файла нет — НЕ перебираем 01..N (во избежание сетевых тормозов). */
+const CENTRAL_REQUIRE_INDEX = true;
+
 /* Переопределения папок в центральном репозитории:
    - krevetochka -> 00
    - избранное -> stars
@@ -1198,37 +1207,44 @@ function setQuickCoverSrc(url) {
   } catch {}
 }
 
-function ensureQuickCoverForAlbum(meta) {
+/* Быстрая подстановка первой обложки из центральной папки.
+   Порядок: 1) index.json[0]; 2) <id>-cover-01.jpg; 3) <id>-cover-01.png; 4) логотип. */
+async function ensureQuickCoverForAlbum(meta) {
   try {
-    const base = normalizeBase(meta.base);
     const id = centralIdForAlbumKey(meta.key);
-    if (id) {
-      const centralJpg = `${CENTRAL_GALLERY_BASE}${id}/${id}-cover-01.jpg`;
-      const centralPng = `${CENTRAL_GALLERY_BASE}${id}/${id}-cover-01.png`;
-      // Сначала пробуем jpg, если нет — png, если нет — фолбэк в альбом
-      const probe = new Image();
-      probe.onload = () => setQuickCoverSrc(centralJpg);
-      probe.onerror = () => {
-        const probe2 = new Image();
-        probe2.onload = () => setQuickCoverSrc(centralPng);
-        probe2.onerror = () => ensureQuickCover(base);
-        probe2.src = centralPng;
-      };
-      probe.src = centralJpg;
-      return;
-    }
-    ensureQuickCover(base);
-  } catch(e) {}
-}
-function ensureQuickCover(baseUrl) {
-  try {
-    const jpg = absJoin(baseUrl, 'Cover.jpg');
-    const png = absJoin(baseUrl, 'Cover.png');
+    if (!id) { setQuickCoverSrc('img/logo.png'); return; }
+
+    const baseDir = `${CENTRAL_GALLERY_BASE}${id}/`;
+
+    // 1) Пробуем index.json
+    try {
+      const r = await fetch(baseDir + 'index.json', { cache: 'no-cache' });
+      if (r.ok) {
+        const j = await r.json();
+        const first = Array.isArray(j.items) && j.items[0] ? j.items[0] : null;
+        if (first && String(first.type).toLowerCase() === 'img' && first.src) {
+          const src = first.src.match(/^https?:\/\//i) ? first.src : (baseDir + String(first.src).replace(/^\.?\//,''));
+          setQuickCoverSrc(src);
+          return;
+        }
+      }
+    } catch {}
+
+    // 2) Пробуем стандартные имена
+    const jpg = `${baseDir}${id}-cover-01.jpg`;
+    const png = `${baseDir}${id}-cover-01.png`;
     const probe = new Image();
     probe.onload = () => setQuickCoverSrc(jpg);
-    probe.onerror = () => setQuickCoverSrc(png);
+    probe.onerror = () => {
+      const probe2 = new Image();
+      probe2.onload = () => setQuickCoverSrc(png);
+      probe2.onerror = () => setQuickCoverSrc('img/logo.png');
+      probe2.src = png;
+    };
     probe.src = jpg;
-  } catch(e) {}
+  } catch {
+    setQuickCoverSrc('img/logo.png');
+  }
 }
   
 /* Проверка наличия картинки через <img> */
@@ -1309,47 +1325,47 @@ async function buildCentralGalleryList(albumKey, signal) {
 
   const baseDir = `${CENTRAL_GALLERY_BASE}${id}/`;
 
-  // 0) Быстрый путь: если есть индекс (albums/gallery/<id>/index.json)
-  // Формат:
-  // { "items": [ { "type": "img", "src": "01.jpg" }, { "type": "html", "src": "news-01-baner.html" } ] }
+  // 0) Быстрый и главный путь: index.json
   try {
     const r = await fetch(baseDir + 'index.json', { cache: 'no-cache', signal });
     if (r.ok) {
       const j = await r.json();
       const items = Array.isArray(j.items) ? j.items : [];
       const mapped = items.map(it => {
-        const type = (it.type === 'html') ? 'html' : 'img';
-        const src = (it.src || '').match(/^https?:\/\//i) ? it.src : (baseDir + it.src.replace(/^\.?\//,''));
-        return { type, src, ar: parseAspectFromFileName(it.src || '') || 1 };
+        const type = (String(it.type).toLowerCase() === 'html') ? 'html' : 'img';
+        const rel = (it.src || '');
+        const src = rel.match(/^https?:\/\//i) ? rel : (baseDir + rel.replace(/^\.?\//,''));
+        return { type, src, ar: parseAspectFromFileName(rel) || 1 };
       }).filter(Boolean);
       if (mapped.length) return mapped;
     }
   } catch {}
 
-  // 1) Медленный путь: последовательный перебор
+  if (CENTRAL_REQUIRE_INDEX) {
+    // Без индекса — ничего не делаем, чтобы не было задержек и «чёрных экранов»
+    return [];
+  }
+
+  // 1) Резерв: короткий перебор 01..N (минимум сетевых проверок)
   const out = [];
   let missStreak = 0;
-
   const maxItems = CENTRAL_GALLERY_MAX_BY_ID[id] || CENTRAL_GALLERY_MAX;
   for (let i = 1; i <= maxItems; i++) {
     if (signal?.aborted) return out;
     const xx = String(i).padStart(2, '0');
 
-    // images
     const jpg = `${baseDir}${id}-cover-${xx}.jpg`;
     const png = `${baseDir}${id}-cover-${xx}.png`;
-
-    // html banners (несколько шаблонов)
     const bn1 = `${baseDir}${id}-banner-${xx}.html`;
     const bn2 = `${baseDir}${id}-${xx}-banner.html`;
-    const bn3 = `${baseDir}${id}-${xx}-baner.html`; // «baner», как в примере
+    const bn3 = `${baseDir}${id}-${xx}-baner.html`;
 
     const [okJpg, okPng, okH1, okH2, okH3] = await Promise.all([
-      probeImage(jpg, 1100),
-      probeImage(png, 1100),
-      probeHtml(bn1, 1100),
-      probeHtml(bn2, 1100),
-      probeHtml(bn3, 1100),
+      probeImage(jpg, 700),
+      probeImage(png, 700),
+      probeHtml(bn1, 700),
+      probeHtml(bn2, 700),
+      probeHtml(bn3, 700),
     ]);
 
     if (okJpg || okPng || okH1 || okH2 || okH3) {
@@ -1362,7 +1378,7 @@ async function buildCentralGalleryList(albumKey, signal) {
       missStreak = 0;
     } else {
       missStreak++;
-      if (missStreak >= 2) break; // досрочная остановка
+      if (missStreak >= 2) break;
     }
   }
   return out;
@@ -1374,20 +1390,7 @@ async function buildCentralGalleryList(albumKey, signal) {
 async function buildCoverGalleryList(albumKey, baseUrl, signal) {
   try {
     const central = await buildCentralGalleryList(albumKey, signal);
-    if (!signal?.aborted && Array.isArray(central) && central.length) {
-      return central;
-    }
-  } catch {}
-
-  try {
-    const bases = ['Cover', 'Cover01', 'Cover02', 'Cover03'];
-    const picks = await Promise.all(bases.map(b => pickFirstExistingCover(baseUrl, b)));
-    const gallery = [];
-    for (let i = 0; i < bases.length; i++) {
-      const src = picks[i];
-      if (src) gallery.push({ type: 'img', src, ar: parseAspectFromFileName(src) });
-    }
-    return gallery;
+    return Array.isArray(central) ? central : [];
   } catch {
     return [];
   }
@@ -1446,14 +1449,20 @@ async function preloadGalleryItems(items, signal) {
       await new Promise(resolve => {
         const im = new Image();
         im.decoding = 'async';
-        im.onload = () => resolve();
-        im.onerror = () => resolve(); // не блокируем из-за одной ошибки
+        im.onload = () => {
+          try {
+            if (im.naturalWidth && im.naturalHeight) {
+              const ar = im.naturalWidth / im.naturalHeight;
+              if (isFinite(ar) && ar > 0) it.ar = ar;
+            }
+          } catch {}
+          resolve();
+        };
+        im.onerror = () => resolve();
         im.src = it.src;
       });
     } else if (it.type === 'html') {
-      try {
-        await fetch(it.src, { cache: 'no-cache', signal });
-      } catch {}
+      try { await fetch(it.src, { cache: 'no-cache', signal }); } catch {}
     }
   });
   await Promise.allSettled(tasks);
@@ -1659,6 +1668,7 @@ async function loadAlbumByKey(key) {
   } finally {
     setActiveAlbumIcon(currentAlbumKey);
     setCoverWrapVisible(__currentGalleryVisible); // видимость галереи определяется нашей логикой
+    setAlbumSelectorByKey(currentAlbumKey);
   }
 }
 
@@ -1839,9 +1849,9 @@ async function initializeMainUi() {
     // Кнопка-заголовок + меню
     // Начальный «ключ» для заголовка: если deep-link на избранное — отразим это
     const startKey = (params.get('view') === 'favorites') ? SPECIAL_FAVORITES_KEY
-                    : (params.get('view') === 'reliz') ? SPECIAL_RELIZ_KEY
-                    : (toLoad || first);
-    buildAlbumMenu(startKey);
+                        : (params.get('view') === 'reliz') ? SPECIAL_RELIZ_KEY
+                        : (toLoad || first);
+    setAlbumSelectorByKey(startKey);
 
     // сразу подсветим активную иконку под заголовком
     setActiveAlbumIcon(startKey === SPECIAL_FAVORITES_KEY || startKey === SPECIAL_RELIZ_KEY ? startKey : sel.value);
@@ -1997,35 +2007,40 @@ async function initializeMainUi() {
   })();
 }
 async function openRelizView(){
-  // «Новости» — показываем центральную галерею (папка albums/gallery/news),
-  // а список треков скрываем.
+  // «Новости»: квадратная галерея (albums/gallery/news) + соцссылки + ниже news.htm.
   viewMode = 'reliz';
   setActiveAlbumIcon(SPECIAL_RELIZ_KEY);
+  setAlbumSelectorByKey(SPECIAL_RELIZ_KEY);
 
   // UI
   const list = document.getElementById('track-list');
   const cw = document.getElementById('cover-wrap');
   if (list) list.style.display = 'none';
   if (cw) cw.style.display = '';
+  applyRelizUiMode(true); // скрываем плеер и некоторые кнопки
 
   // Сбрасываем состояние галереи и стрелок
   markGalleryNotReady();
   __currentGalleryVisible = true;
   setCoverWrapVisible(true);
 
-  // Убираем возможный встроенный контейнер «релизов», если был
+  // Контейнер для news.htm ниже соц. ссылок
   clearRelizView();
+  let cont = document.getElementById('reliz-container');
+  if (!cont) {
+    cont = document.createElement('div');
+    cont.id = 'reliz-container';
+    const header = document.querySelector('header');
+    header && header.insertAdjacentElement('afterend', cont);
+  }
+  cont.innerHTML = ''; // очистим (перестраиваем заново)
 
   // Сборка центральной галереи: SPECIAL_RELIZ_KEY => 'news'
   try {
-    // Быстро подставим «квази-крышку», если есть картинка:
-    // для news скорее всего первый элемент — HTML баннер,
-    // поэтому quick cover может не сработать (это нормально).
     ensureQuickCoverForAlbum({ key: SPECIAL_RELIZ_KEY, base: location.origin + location.pathname });
 
-    // Собираем список элементов галереи
     const ctrl = new AbortController();
-    __albumLoadCtrl = ctrl; // переиспользуем общий контроллер отмены
+    __albumLoadCtrl = ctrl;
     const signal = ctrl.signal;
 
     const gal = await buildCoverGalleryList(SPECIAL_RELIZ_KEY, location.origin + location.pathname, signal);
@@ -2040,7 +2055,6 @@ async function openRelizView(){
       galleryAllLoaded = true;
       maybeStartCoverAutoAfterReady();
     } else {
-      // Нет элементов в папке — поставим логотип
       coverGalleryArr = [{ type:'img', src: 'img/logo.png', ar: 1 }];
       coverGalleryIdx = 0;
       setCoverImage(0);
@@ -2056,7 +2070,24 @@ async function openRelizView(){
     maybeStartCoverAutoAfterReady();
   }
 
-  // Мини-режим — включится автоматически, так как мы просматриваем НЕ играющий альбом/режим
+  // Вставляем страницу news.htm ниже (самостоятельный контент)
+  try {
+    const newsWrap = document.createElement('div');
+    newsWrap.style.margin = '12px auto';
+    newsWrap.style.maxWidth = '400px';
+    newsWrap.innerHTML = `
+      <iframe
+        src="./news.htm"
+        title="Новости — Витрина Разбита"
+        style="width:100%; min-height: 800px; border:1px solid rgba(255,255,255,.1); border-radius:10px; background:#0b0e15;"
+        loading="lazy"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allow="encrypted-media; picture-in-picture; fullscreen">
+      </iframe>`;
+    cont.appendChild(newsWrap);
+  } catch {}
+
+  // Мини-режим по логике уже включился (смотрим НЕ играющий альбом)
   applyMiniModeUI();
 }
 
@@ -2135,6 +2166,7 @@ async function openFavoritesView(){
   viewMode = 'favorites';
   clearRelizView();
   setActiveAlbumIcon(SPECIAL_FAVORITES_KEY);
+  setAlbumSelectorByKey(SPECIAL_FAVORITES_KEY);
 
   // 0) Сохраним плеер: если он был под треком обычного альбома, перенесём в now-playing,
   // чтобы мы не удалили его вместе со списком.
@@ -2524,59 +2556,102 @@ function computeTitleFontSize() {
     btn.style.fontSize = size + 'px';
   } catch {}
 }
-function buildAlbumMenu(initialKey) {
+/* Текущий «выбранный ключ» для заголовка селектора */
+let __albumSelectorKey = null;
+/* Запоминаем вычисленный размер шрифта заголовка, чтобы применить к списку */
+let __albumTitleFontPx = 24;
+
+/* Собрать список пунктов меню в правильном порядке (как ICON_ALBUMS_ORDER) */
+function getMenuItemsInOrder() {
+  return ICON_ALBUMS_ORDER.map(it => ({ key: it.key, title: it.title }));
+}
+
+function setAlbumTitleText(title) {
+  const btn = document.getElementById('album-title-button');
+  if (btn) btn.textContent = title || '—';
+}
+
+/* Подбор размера шрифта для заголовка; применять тот же размер к .album-menu */
+function computeTitleFontSize() {
+  try {
+    const btn = document.getElementById('album-title-button');
+    const menu = document.getElementById('album-menu');
+    if (!btn || !menu) return;
+    const items = getMenuItemsInOrder();
+    const longest = items.reduce((a, b) => (String(b.title||'').length > String(a||'').length ? b.title : a), '');
+    const maxWidth = Math.min(400, btn.clientWidth || 400) - 8;
+    const meas = document.createElement('span');
+    meas.style.position = 'absolute';
+    meas.style.left = '-999999px';
+    meas.style.top = '-999999px';
+    meas.style.whiteSpace = 'nowrap';
+    meas.style.fontWeight = '900';
+    meas.style.letterSpacing = '.01em';
+    meas.style.fontFamily = getComputedStyle(btn).fontFamily;
+    document.body.appendChild(meas);
+    let size = 28;
+    meas.style.fontSize = size + 'px';
+    meas.textContent = longest || '—';
+    while (meas.offsetWidth > maxWidth && size > 18) {
+      size -= 1;
+      meas.style.fontSize = size + 'px';
+    }
+    document.body.removeChild(meas);
+    btn.style.fontSize = size + 'px';
+    menu.style.fontSize = size + 'px';
+    __albumTitleFontPx = size;
+  } catch {}
+}
+
+/* Перестроить меню так, чтобы показать ТОЛЬКО «оставшиеся» пункты */
+function rebuildAlbumMenu(currentKey) {
+  __albumSelectorKey = currentKey;
+
   const menu = document.getElementById('album-menu');
   const btn = document.getElementById('album-title-button');
   if (!menu || !btn) return;
 
-  const items = getMenuItemsInOrder();
-  menu.innerHTML = items.map(it => {
-    const active = (it.key === initialKey) ? ' active' : '';
-    return `<div class="album-menu-item${active}" data-key="${it.key}" role="option" aria-selected="${active ? 'true':'false'}">${it.title}</div>`;
-  }).join('');
-
-  // Заголовок по текущему выбору
-  const currentTitle = (items.find(x => x.key === initialKey) || items[0] || {}).title || '—';
-  setAlbumTitleText(currentTitle);
+  const all = getMenuItemsInOrder();
+  const current = all.find(x => x.key === currentKey) || all[0] || { title: '—' };
+  setAlbumTitleText(current.title);
   computeTitleFontSize();
 
+  // Формируем список без текущего ключа
+  const rest = all.filter(x => x.key !== currentKey);
+  menu.innerHTML = rest.map(it => `<div class="album-menu-item" data-key="${it.key}" role="option" aria-selected="false">${it.title}</div>`).join('');
+
+  // Открыть/закрыть выпадающий список
   btn.onclick = () => {
     const open = menu.classList.toggle('open');
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
   };
 
-  // Выбор пункта
+  // Обработчик выбора
   menu.querySelectorAll('.album-menu-item').forEach(el => {
     el.onclick = async () => {
       const key = el.getAttribute('data-key');
       if (!key) return;
-      menu.querySelectorAll('.album-menu-item').forEach(n => { n.classList.remove('active'); n.setAttribute('aria-selected','false'); });
-      el.classList.add('active'); el.setAttribute('aria-selected','true');
 
-      const title = el.textContent.trim();
-      setAlbumTitleText(title);
-      computeTitleFontSize();
-
-      // Синхронизируем скрытый select (на всякий случай)
+      // Скрытый select для совместимости
       const sel = document.getElementById('album-select');
 
-      // Переход по типу ключа
       if (key === SPECIAL_FAVORITES_KEY) {
         if (sel) sel.value = albumsIndex[0]?.key || '';
         await openFavoritesView();
         setActiveAlbumIcon(SPECIAL_FAVORITES_KEY);
+        rebuildAlbumMenu(SPECIAL_FAVORITES_KEY);
       } else if (key === SPECIAL_RELIZ_KEY) {
         if (sel) sel.value = albumsIndex[0]?.key || '';
         await openRelizView();
         setActiveAlbumIcon(SPECIAL_RELIZ_KEY);
+        rebuildAlbumMenu(SPECIAL_RELIZ_KEY);
       } else {
-        // Реальный альбом
+        // Обычный альбом
         const real = albumByKey(key) ? key : resolveRealAlbumKey(key);
         if (!real || !albumByKey(real)) {
           NotificationSystem.error('Альбом не найден');
         } else {
           if (sel) sel.value = real;
-          // При выборе нового альбома — галерея всегда открыта
           viewMode = 'album';
           clearRelizView();
           document.getElementById('track-list').style.display = '';
@@ -2585,16 +2660,22 @@ function buildAlbumMenu(initialKey) {
           setCoverWrapVisible(true);
           await loadAlbumByKey(real);
           setActiveAlbumIcon(real);
+          rebuildAlbumMenu(real);
         }
       }
-      // Закрываем меню, двигаем интерфейс назад
+      // Закрыть список
       menu.classList.remove('open');
       btn.setAttribute('aria-expanded', 'false');
     };
   });
 
-  // Пересчитать размер на ресайзе
   window.addEventListener('resize', () => computeTitleFontSize());
+}
+
+/* Внешняя точка: установить выбранный пункт в заголовке и показать «остальные» пункты */
+function setAlbumSelectorByKey(key) {
+  const k = key || albumsIndex[0]?.key || null;
+  rebuildAlbumMenu(k);
 }
 
 function setActiveAlbumIcon(key){
@@ -2611,11 +2692,13 @@ function onAlbumIconClick(key){
   if (key === SPECIAL_FAVORITES_KEY) {
     openFavoritesView();
     setActiveAlbumIcon(key);
+    setAlbumSelectorByKey(SPECIAL_FAVORITES_KEY);
     return;
   }
   if (key === SPECIAL_RELIZ_KEY) {
     openRelizView(); // «НОВОСТИ»
     setActiveAlbumIcon(key);
+    setAlbumSelectorByKey(SPECIAL_RELIZ_KEY);
     return;
   }
 
@@ -2654,7 +2737,7 @@ function onAlbumIconClick(key){
   setCoverWrapVisible(true);
 
   loadAlbumByKey(key).then(()=>{
-    // оставляем открытой
+    setAlbumSelectorByKey(key);
   });
 }
 
@@ -3818,6 +3901,22 @@ function applyMiniModeUI() {
 
   updateMiniNowHeader();
   updateNextUpLabel();
+}
+function applyRelizUiMode(on) {
+  const now = document.getElementById('now-playing');
+  const dl = document.getElementById('download-album-main');
+  const off = document.getElementById('offline-btn');
+  const hot = document.getElementById('hotkeys-btn');
+
+  // Плеер не наблюдаем: убираем весь контейнер now-playing
+  if (now) now.style.display = on ? 'none' : '';
+
+  // Кнопки «Скачать весь альбом» и OFFLINE скрываем
+  if (dl) dl.style.display = on ? 'none' : '';
+  if (off) off.style.display = on ? 'none' : '';
+
+  // Горячие клавиши — показываем в НОВОСТЯХ (даже на мобиле)
+  if (hot) hot.style.display = on ? 'block' : (hasKeyboard() ? 'block' : 'none');
 }
 
 function updateMiniNowHeader() {
