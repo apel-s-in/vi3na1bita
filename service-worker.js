@@ -1,7 +1,7 @@
 /* service-worker.js — Витрина Разбита PWA
    v7.3.0: добавлен news.html в CORE, мелкие правки устойчивости
 */
-const VERSION = '7.3.1';
+const VERSION = '7.3.2';
 const CORE_CACHE = `core-v${VERSION}`;
 const ALBUM_CACHE = 'album-offline-v1';
 
