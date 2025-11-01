@@ -116,7 +116,7 @@
       height: 100%;
       border-radius: 12px;
       overflow: hidden;
-      background: #0b0e15;
+      background: var(--primary-bg); /* фон приложения под прозрачные PNG */
       box-shadow: 0 4px 24px rgba(0,0,0,0.3);
       position: relative;
     }
@@ -126,13 +126,10 @@
       height: 100%;
       display: block;
       border: 0;
-      background: #000;
+      background: transparent;       /* убираем чёрный фон */
     }
-    #cover-slot img { object-fit: contain; }
-    #cover-slot iframe {
-      /* баннеры изолированы, без скриптов, чтобы не ломать страницу */
-      background: #000;
-    }
+    #cover-slot img { object-fit: contain; background: transparent; }
+    #cover-slot iframe { background: transparent; }
 
     /* Стрелки до готовности галереи неактивны */
     .cover-gallery-arrow {
@@ -1176,9 +1173,25 @@ function setQuickCoverSrc(url) {
     slot.appendChild(img);
   } catch {}
 }
+/* Установить мгновенно HTML-баннер в слот */
+function setQuickCoverHtml(url) {
+  try {
+    const slot = document.getElementById('cover-slot');
+    const wrap = document.getElementById('cover-wrap');
+    if (!slot) return;
+    slot.innerHTML = '';
+    if (wrap) wrap.style.aspectRatio = '1 / 1'; // на всякий случай квадрат до подгрузки
 
-/* Быстрая подстановка первой обложки из центральной папки.
-   Порядок: 1) index.json[0]; 2) <id>-cover-01.jpg; 3) <id>-cover-01.png; 4) логотип. */
+    const ifr = document.createElement('iframe');
+    ifr.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-forms');
+    ifr.setAttribute('referrerpolicy', 'no-referrer');
+    ifr.src = url;
+    slot.appendChild(ifr);
+  } catch {}
+}
+
+/* Быстрая подстановка первого элемента из центральной папки.
+   Порядок: 1) index.json[0] (html или img); 2) <id>-cover-01.jpg; 3) <id>-cover-01.png; 4) логотип. */
 async function ensureQuickCoverForAlbum(meta) {
   try {
     const id = centralIdForAlbumKey(meta.key);
@@ -1192,8 +1205,14 @@ async function ensureQuickCoverForAlbum(meta) {
       if (r.ok) {
         const j = await r.json();
         const first = Array.isArray(j.items) && j.items[0] ? j.items[0] : null;
-        if (first && String(first.type).toLowerCase() === 'img' && first.src) {
-          const src = first.src.match(/^https?:\/\//i) ? first.src : (baseDir + String(first.src).replace(/^\.?\//,''));
+        if (first && first.src) {
+          const type = String(first.type || 'img').toLowerCase();
+          const rel = String(first.src);
+          const src = rel.match(/^https?:\/\//i) ? rel : (baseDir + rel.replace(/^\.?\//,''));
+          if (type === 'html') {
+            setQuickCoverHtml(src);
+            return;
+          }
           setQuickCoverSrc(src);
           return;
         }
@@ -1311,8 +1330,9 @@ async function buildCentralGalleryList(albumKey, signal) {
     }
   } catch {}
 
-  if (CENTRAL_REQUIRE_INDEX) {
-    // Без индекса — ничего не делаем, чтобы не было задержек и «чёрных экранов»
+  if (CENTRAL_REQUIRE_INDEX && id !== 'news' && id !== 'stars') {
+    // Для обычных альбомов без индекса не сканируем,
+    // но для news/stars разрешаем резервный перебор.
     return [];
   }
 
@@ -1829,6 +1849,7 @@ async function initializeMainUi() {
     setActiveAlbumIcon(startKey === SPECIAL_FAVORITES_KEY || startKey === SPECIAL_RELIZ_KEY ? startKey : sel.value);
 
     sel.onchange = () => {
+      applyRelizUiMode(false);
       viewMode = 'album';
       clearRelizView();
       document.getElementById('track-list').style.display = '';
@@ -2135,6 +2156,7 @@ function updateFavoritesRefsModelActiveFlag(albumKey, trackIndex, isActive) {
 }
 
 async function openFavoritesView(){
+  applyRelizUiMode(false);
   viewMode = 'favorites';
   clearRelizView();
   setActiveAlbumIcon(SPECIAL_FAVORITES_KEY);
@@ -2551,7 +2573,7 @@ function onAlbumIconClick(key){
     NotificationSystem.error('Альбом не найден');
     return;
   }
-
+  applyRelizUiMode(false);
   viewMode = 'album';
   clearRelizView();
   document.getElementById('track-list').style.display = '';
@@ -3737,13 +3759,15 @@ function applyRelizUiMode(on) {
   const dl = document.getElementById('download-album-main');
   const off = document.getElementById('offline-btn');
   const hot = document.getElementById('hotkeys-btn');
+  const filterBtn = document.getElementById('filter-favorites-btn');
 
   // Плеер не наблюдаем: убираем весь контейнер now-playing
   if (now) now.style.display = on ? 'none' : '';
 
-  // Кнопки «Скачать весь альбом» и OFFLINE скрываем
+  // Кнопки «Скачать весь альбом», OFFLINE и «Скрыть не отмеченные ⭐ песни»
   if (dl) dl.style.display = on ? 'none' : '';
   if (off) off.style.display = on ? 'none' : '';
+  if (filterBtn) filterBtn.style.display = on ? 'none' : '';
 
   // Горячие клавиши — показываем в НОВОСТЯХ (даже на мобиле)
   if (hot) hot.style.display = on ? 'block' : (hasKeyboard() ? 'block' : 'none');
