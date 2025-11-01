@@ -3769,9 +3769,6 @@ async function shareLyricsFromModal() {
   }
 }
 
-/* ===== Зум текста в модалке (без пересчёта ширин) ===== */
-let __lyricsCurrFontPx = null;
-
 function zoomLyrics(delta) {
   const pre = document.getElementById('lyrics-modal-pre');
   if (!pre) return;
