@@ -506,10 +506,10 @@
       white-space: nowrap;
     }
 
-    /* Вторая строка — три одинаковые квадратные кнопки: [-] [Share] [+] */
+    /* Вторая строка — четыре одинаковые квадратные кнопки: [-] [⛶] [Share] [+] — в одну строку */
     .lyrics-controls-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr; /* одинаковая ширина */
+      grid-template-columns: repeat(4, 1fr); /* четыре равных столбца */
       gap: 8px;
       align-items: center;
     }
@@ -720,7 +720,7 @@
         <!-- отдельной строкой: всегда в одну строку -->
         <button class="lyrics-modal-btn primary bigcopy" type="button" onclick="copyLyricsFromModal()">Скопировать в буфер обмена</button>
 
-        <!-- сетка из трёх одинаковых квадратных кнопок -->
+        <!-- сетка из четырёх одинаковых квадратных кнопок: -, ⛶, Share, + (в одной строке) -->
         <div class="lyrics-controls-grid">
           <!-- Уменьшить -->
           <button class="lyrics-square-btn" type="button" title="Уменьшить" aria-label="Уменьшить" onclick="zoomLyrics(-1)">
