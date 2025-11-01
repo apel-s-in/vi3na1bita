@@ -1331,7 +1331,8 @@ function renderCoverItem(item) {
   if (item.type === 'html') {
     // Встраиваем как sandbox iframe (без скриптов, без top-navigation)
     const ifr = document.createElement('iframe');
-    ifr.setAttribute('sandbox', 'allow-same-origin allow-popups allow-forms'); // без allow-scripts
+    ifr.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-forms');
+    ifr.setAttribute('referrerpolicy', 'no-referrer');
     ifr.src = item.src;
     slot.appendChild(ifr);
   } else {
