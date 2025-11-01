@@ -1,19 +1,14 @@
 {
   "albums": [
     {
-      "key": "mzid",
+      "key": "mezhdu-zlom-i-dobrom",
       "title": "Между Злом и Добром",
       "base": "https://apel-s-in.github.io/vi3na1bita-mezhdu-zlom-i-dobrom/"
     },
     {
-      "key": "golos",
+      "key": "golos-dushi",
       "title": "Голос Души",
       "base": "https://apel-s-in.github.io/vi3na1bita-golos-dushi/"
-    },
-    {
-      "key": "skazka",
-      "title": "Однажды в сказке",
-      "base": "https://apel-s-in.github.io/vi3na1bita-odnazhdi-v-skazke/"
     },
     {
       "key": "krevetochka",
