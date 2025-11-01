@@ -329,11 +329,13 @@
       width: 60px; height: 60px; border-radius: 10px; overflow: hidden; 
       border: 1px solid var(--border-color); cursor: pointer;
       filter: grayscale(70%) brightness(.88); opacity: .72;
-      transition: transform .15s, filter .15s, opacity .15s, box-shadow .15s;
+      transition: transform .15s, filter .15s, opacity .15s, box-shadow .15s, width .15s ease, height .15s ease;
       flex: 0 0 auto;
     }
-    .album-icon img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .album-icon.active { filter: none; opacity: 1; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+    .album-icon.active { 
+      filter: none; opacity: 1; box-shadow: 0 2px 10px rgba(0,0,0,.35); 
+      width: 66px; height: 66px;      /* +10% к размеру, соседей раздвинет layout, gap сохраняется */
+    }
     .album-icon:hover { transform: translateY(-2px); }
 
     /* Контейнер информационной страницы (Будущие релизы) */
@@ -898,6 +900,8 @@ let __currentAudio = null;
 let __wasMini = false;
 let __savedLyricsModeForMini = null;  // 'normal' | 'hidden' | 'expanded' или null
 let __savedAnimationForMini = null;    // true | false | null — временное хранение анимации лирики для мини‑режима
+/* Текущее состояние видимости галереи для выбранного альбома (сбрасывается при каждом выборе нового альбома) */
+let __currentGalleryVisible = true;
 /* ====== Альбомные иконки / спец-режимы ====== */
 const SPECIAL_FAVORITES_KEY = '__favorites__';
 const SPECIAL_RELIZ_KEY = '__reliz__'; // оставляем ключ совместимости
@@ -1023,6 +1027,77 @@ function parseAspectFromFileName(url) {
   } catch {}
   return 1; // по умолчанию квадрат
 }
+/* Централизованная галерея обложек (ускоряет отрисовку):
+   albums/gallery/NN/NN-cover-XX.jpg|png */
+const CENTRAL_GALLERY_BASE = './albums/gallery/';
+const CENTRAL_GALLERY_MAX = 20; // сканируем 01..20; можно увеличить
+
+/* Порядковый номер альбома в списке albumsIndex => "01","02",... */
+function albumOrderIndexStr(albumKey) {
+  try {
+    const i = (albumsIndex || []).findIndex(a => a && a.key === albumKey);
+    if (i < 0) return null;
+    return String(i + 1).padStart(2, '0');
+  } catch { return null; }
+}
+
+/* Мгновенный quick cover для альбома: сначала центральный репо (NN/NN-cover-01), затем фолбэк Cover.jpg/png в самом альбоме */
+function ensureQuickCoverForAlbum(meta) {
+  try {
+    const base = normalizeBase(meta.base);
+    const img = document.getElementById('cover');
+    if (!img) return;
+
+    const nn = albumOrderIndexStr(meta.key);
+    if (nn) {
+      const centralJpg = `${CENTRAL_GALLERY_BASE}${nn}/${nn}-cover-01.jpg`;
+      const centralPng = `${CENTRAL_GALLERY_BASE}${nn}/${nn}-cover-01.png`;
+      img.referrerPolicy = 'no-referrer';
+      img.decoding = 'async';
+      img.loading = 'eager';
+      img.src = centralJpg;
+      img.onerror = () => {
+        img.onerror = null;
+        img.src = centralPng;
+        img.onerror = () => { img.onerror = null; ensureQuickCover(base); }; // фолбэк к обложке альбома
+      };
+      return;
+    }
+    // Если nn не найден — просто фолбэк на обложки альбома
+    ensureQuickCover(base);
+  } catch(e) {}
+}
+
+/* Собрать список централизованных обложек для данного альбома (по номеру NN) */
+async function buildCentralGalleryList(albumKey, signal) {
+  const nn = albumOrderIndexStr(albumKey);
+  if (!nn) return [];
+  const out = [];
+  let missStreak = 0;
+
+  // Кандидаты 01..CENTRAL_GALLERY_MAX, для каждого — jpg или png (приоритет jpg)
+  for (let i = 1; i <= CENTRAL_GALLERY_MAX; i++) {
+    if (signal?.aborted) return out;
+    const xx = String(i).padStart(2, '0');
+    const jpg = `${CENTRAL_GALLERY_BASE}${nn}/${nn}-cover-${xx}.jpg`;
+    const png = `${CENTRAL_GALLERY_BASE}${nn}/${nn}-cover-${xx}.png`;
+
+    // Проверяем jpg и png параллельно
+    const [okJpg, okPng] = await Promise.all([probeImage(jpg, 1200), probeImage(png, 1200)]);
+    const picked = okJpg ? jpg : (okPng ? png : null);
+
+    if (picked) {
+      out.push({ src: picked, ar: parseAspectFromFileName(picked) });
+      missStreak = 0;
+    } else {
+      missStreak++;
+      // ранняя остановка: два подряд пропуска — прерываем сканирование
+      if (missStreak >= 2) break;
+    }
+  }
+  return out;
+}
+
 /* Мгновенная установка обложки: пробуем Cover.jpg, если ошибка — Cover.png.
    Не ждём готовности галереи. */
 function ensureQuickCover(baseUrl) {
@@ -1097,17 +1172,29 @@ async function pickFirstExistingCover(baseUrl, baseName) {
   return null;
 }
 
-/* Быстрая параллельная сборка галереи: Cover, Cover01, Cover02, Cover03.
-   Возвращаем [{src, ar}] только для реально найденных файлов. */
-async function buildCoverGalleryList(baseUrl) {
-  const bases = ['Cover', 'Cover01', 'Cover02', 'Cover03'];
-  const picks = await Promise.all(bases.map(b => pickFirstExistingCover(baseUrl, b)));
-  const gallery = [];
-  for (let i = 0; i < bases.length; i++) {
-    const src = picks[i];
-    if (src) gallery.push({ src, ar: parseAspectFromFileName(src) });
+/* Сборка галереи: сперва центральный репозиторий (если есть), затем фолбэк к файлам альбома. */
+async function buildCoverGalleryList(albumKey, baseUrl, signal) {
+  // 1) Централизованная галерея
+  try {
+    const central = await buildCentralGalleryList(albumKey, signal);
+    if (!signal?.aborted && Array.isArray(central) && central.length) {
+      return central;
+    }
+  } catch {}
+
+  // 2) Файлы у самого альбома: Cover, Cover01, ...
+  try {
+    const bases = ['Cover', 'Cover01', 'Cover02', 'Cover03'];
+    const picks = await Promise.all(bases.map(b => pickFirstExistingCover(baseUrl, b)));
+    const gallery = [];
+    for (let i = 0; i < bases.length; i++) {
+      const src = picks[i];
+      if (src) gallery.push({ src, ar: parseAspectFromFileName(src) });
+    }
+    return gallery;
+  } catch {
+    return [];
   }
-  return gallery;
 }
 
 async function getAlbumConfigByKey(albumKey){
@@ -1245,20 +1332,20 @@ async function loadAlbumByKey(key) {
   albumBase = base;
   localStorage.setItem('currentAlbum', currentAlbumKey);
 
-  // Отменяем предыдущий in‑flight
+  // Отменяем предыдущую загрузку
   try { __albumLoadCtrl?.abort(); } catch {}
   __albumLoadCtrl = new AbortController();
   const signal = __albumLoadCtrl.signal;
 
-  // 1) Мгновенно покажем базовую обложку (jpg→png фолбэк), не дожидаясь галереи
-  ensureQuickCover(base);
+  // Быстрый quick cover: сперва центральное хранилище, затем фолбэк в альбом
+  ensureQuickCoverForAlbum({ key, base });
 
-  // 2) Если конфиг уже в кэше — мгновенно отрисуем UI из него, а сеть обновит фон
+  // Кэш конфигурации
   if (albumConfigCache[key]?.config) {
     const cached = albumConfigCache[key];
     await applyAlbumConfig(cached.base, cached.config, { skipCovers: true, signal });
-    // фоном перестроим галерею быстрее, потом обновим обложку (стрелочки уже будут работать)
-    buildCoverGalleryList(base).then(gal => {
+    // Фоном собираем галерею (с учётом abort)
+    buildCoverGalleryList(key, base, signal).then(gal => {
       if (signal.aborted) return;
       if (Array.isArray(gal) && gal.length) {
         coverGalleryArr = gal;
@@ -1266,12 +1353,11 @@ async function loadAlbumByKey(key) {
         setCoverImage(coverGalleryIdx);
       }
     }).catch(()=>{});
-    // параллельно подогреем остальные альбомы
     warmupOtherAlbums(key);
     return;
   }
 
-  // 3) Конфиг не в кэше — грузим, но UI уже с тенью обложки
+  // Грузим config.json
   try {
     const resp = await fetch(absJoin(base, 'config.json'), { cache: 'no-cache', signal });
     if (!resp.ok) throw new Error('HTTP ' + resp.status);
@@ -1283,19 +1369,17 @@ async function loadAlbumByKey(key) {
       if (t.fulltext) t.fulltext = absJoin(base, t.fulltext);
     });
 
-    albumConfigCache[key] = { base, config: data }; // положим в кэш
+    albumConfigCache[key] = { base, config: data };
     await applyAlbumConfig(base, data, { skipCovers: false, signal });
 
-    // Тёплый старт для остальных альбомов
     warmupOtherAlbums(key);
   } catch(e) {
-    if (signal.aborted) return; // тихо, было переключение
+    if (signal.aborted) return;
     console.error('Не удалось загрузить config.json альбома:', e);
     NotificationSystem.error('Не удалось загрузить альбом');
   } finally {
-    // Обновим подсветку и видимость галереи
     setActiveAlbumIcon(currentAlbumKey);
-    setCoverWrapVisible(!coverCollapsedMap[currentAlbumKey]);
+    setCoverWrapVisible(__currentGalleryVisible); // видимость галереи определяется нашей логикой
   }
 }
 
@@ -1316,11 +1400,10 @@ async function applyAlbumConfig(base, data, { skipCovers = false, signal } = {})
   // Быстро построим/обновим галерею (если не попросили пропустить)
   if (!skipCovers) {
     try {
-      const gal = await buildCoverGalleryList(base);
+      const gal = await buildCoverGalleryList(currentAlbumKey, base, signal);
       if (!signal?.aborted && Array.isArray(gal) && gal.length) {
         coverGalleryArr = gal;
       } else {
-        // жёсткий фолбэк (если ничего не нашли)
         coverGalleryArr = [{ src: absJoin(base, 'Cover.png'), ar: 1 }];
       }
     } catch {
@@ -1467,12 +1550,17 @@ function initializeMainUi() {
     setActiveAlbumIcon(sel.value);
 
     sel.onchange = () => {
-      viewMode='album';
+      viewMode = 'album';
       clearRelizView();
       document.getElementById('track-list').style.display = '';
-      document.getElementById('cover-wrap').style.display='';
+      document.getElementById('cover-wrap').style.display = '';
       setActiveAlbumIcon(sel.value);
-      loadAlbumByKey(sel.value).then(()=> setCoverWrapVisible(!coverCollapsedMap[sel.value]));
+      // При выборе нового альбома галерея ВСЕГДА открыта
+      __currentGalleryVisible = true;
+      setCoverWrapVisible(true);
+      loadAlbumByKey(sel.value).then(()=> {
+        // ничего не меняем: оставляем как открыто
+      });
     };
 
     if (localStorage.getItem('promoPassed') === '1') {
@@ -2093,25 +2181,20 @@ function onAlbumIconClick(key){
     return;
   }
 
-  // Неопределённый ключ — попробуем резолвить из data-icon
+  // Неопределённый ключ — попробуем резолвить
   if (!key || key === '__unknown__') {
-    // Если вдруг у элемента был только псевдоключ — попробуем достать реальный по активному
     const real = resolveRealAlbumKey(key);
     if (real) key = real;
   }
 
-  // Повторный тап по активной иконке: скрыть/показать галерею
+  // Если это текущий альбом в режиме «album» — просто тумблер видимости галереи
   if (viewMode === 'album' && key === currentAlbumKey) {
-    if (key !== SPECIAL_FAVORITES_KEY && key !== SPECIAL_RELIZ_KEY) {
-      const current = !!coverCollapsedMap[key];
-      setCoverWrapVisible(!current);
-      coverCollapsedMap[key] = current ? false : true;
-      try { localStorage.setItem('coverCollapsedMap', JSON.stringify(coverCollapsedMap)); } catch {}
-    }
+    __currentGalleryVisible = !__currentGalleryVisible;
+    setCoverWrapVisible(__currentGalleryVisible);
     return;
   }
 
-  // Переключаем альбом как через select
+  // Переключаемся на другой альбом: галерея ДОЛЖНА быть открыта
   const meta = albumMetaByKey(key);
   if (!meta) { 
     NotificationSystem.error('Альбом не найден');
@@ -2128,8 +2211,12 @@ function onAlbumIconClick(key){
 
   setActiveAlbumIcon(key);
 
+  // При входе в новый альбом — открываем галерею и сразу показываем её
+  __currentGalleryVisible = true;
+  setCoverWrapVisible(true);
+
   loadAlbumByKey(key).then(()=>{
-    setCoverWrapVisible(!coverCollapsedMap[key]);
+    // оставляем открытой
   });
 }
 
