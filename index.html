@@ -78,7 +78,10 @@
     header { width: 100%; text-align: center; margin: 0 auto; }
     /* Крупный выпадающий заголовок-выбор альбома */
     .album-title-button{
-      display:block;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
       width:100%;
       max-width:400px;
       margin: 18px auto 2px auto;
@@ -92,16 +95,32 @@
       cursor: pointer;
       padding: 4px 6px;
       text-shadow: 0 1px 0 rgba(0,0,0,.35);
+      white-space: nowrap;         /* НЕ переносить выбранный заголовок */
     }
+    .album-title-button #album-title-text{
+      display:inline-block;
+      max-width: calc(100% - 28px);/* оставить место под стрелку */
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .album-title-caret{
+      transition: transform .18s ease;
+      opacity: .9;
+    }
+    #album-title-button[aria-expanded="true"] .album-title-caret{
+      transform: rotate(180deg);
+    }
+
+    /* Выпадающее меню */
     .album-menu{
       width:100%;
       max-width:400px;
-      margin: 6px auto 0 auto;
-      display:none;           /* по умолчанию скрыто */
+      margin: 8px auto 0 auto;
+      display:none;                /* по умолчанию скрыто */
       background: transparent;
       border-radius: 0;
-      /* Важное: пункты меню наследуют размер шрифта заголовка */
-      font-size: inherit;
+      font-size: inherit;          /* как у заголовка */
     }
     .album-menu.open{ display:block; }
     .album-menu-item{
@@ -110,15 +129,24 @@
       justify-content:center;
       padding: 8px 6px;
       color: #cfe3ff;
-      font-weight: 900;            /* как у заголовка */
+      font-weight: 900;
       letter-spacing: .01em;
       cursor: pointer;
       user-select: none;
-      /* размер как у заголовка */
       font-size: inherit;
+      white-space: nowrap;         /* НЕ переносить строки (например КРЕВЕツTOCHKA) */
     }
-    .album-menu-item:hover{ color:#fff; background: rgba(255,255,255,.05); }
-    /* Подсветка активного НЕ используется — пункт активного альбома исчезает из списка */
+    .album-menu-item:hover{
+      color:#fff;
+      background: rgba(255,255,255,.05);
+    }
+    /* Акцент для «Избранного» (как на макете со звёздами) */
+    .album-menu-item.fav{
+      color: #ffd166;
+      text-shadow: 0 1px 0 rgba(0,0,0,.35);
+    }
+
+    /* Подсветка активного НЕ используется — активная позиция исчезает из списка */
     .album-menu-item.active{ background: none; }
 
     /* Выбор альбома */
@@ -400,7 +428,7 @@
     /* Ряд иконок альбомов */
     .album-icons { 
       display: flex; gap: 10px; align-items: center; justify-content: center; 
-      margin: 10px auto 0 auto; max-width: 400px; overflow-x: auto; padding: 4px 0;
+      margin: 12px auto 0 auto; max-width: 400px; overflow-x: auto; padding: 4px 0;
     }
     .album-icon { 
       width: 60px; height: 60px; border-radius: 10px; overflow: hidden; 
@@ -666,7 +694,12 @@
     <header>
       <!-- Выбор альбома -->
       <div class="album-picker">
-        <button id="album-title-button" class="album-title-button" aria-haspopup="listbox" aria-expanded="false">—</button>
+        <button id="album-title-button" class="album-title-button" aria-haspopup="listbox" aria-expanded="false">
+          <span id="album-title-text">—</span>
+          <svg class="album-title-caret" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+            <path d="M7 10l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
         <div id="album-menu" class="album-menu" role="listbox" aria-label="Выбор альбома"></div>
         <!-- Скрытый select оставляем для обратной совместимости с кодом -->
         <select id="album-select" aria-label="Выбор альбома" style="display:none;"></select>
@@ -2512,50 +2545,7 @@ function buildAlbumIcons(){
   // Подсветка текущего альбома (если уже выбран)
   setActiveAlbumIcon(currentAlbumKey || document.getElementById('album-select')?.value || (albumsIndex[0]?.key || ''));
 }
-/* ====== Крупный выпадающий заголовок (меню альбомов) ====== */
-function getMenuItemsInOrder() {
-  // Используем уже заданный порядок ICON_ALBUMS_ORDER
-  // Для каждого элемента берём title из массива
-  return ICON_ALBUMS_ORDER.map(it => {
-    return { key: it.key, title: it.title };
-  });
-}
-function setAlbumTitleText(title) {
-  const btn = document.getElementById('album-title-button');
-  if (btn) btn.textContent = title || '—';
-}
-function computeTitleFontSize() {
-  // Подбираем font-size кнопки под самую длинную надпись из списка,
-  // чтобы она влезала в 400px по ширине (минус небольшой запас).
-  try {
-    const btn = document.getElementById('album-title-button');
-    if (!btn) return;
-    const items = getMenuItemsInOrder();
-    const longest = items.reduce((a, b) => (String(b.title||'').length > String(a||'').length ? b.title : a), '');
-    const maxWidth = Math.min(400, btn.clientWidth || 400) - 8; // запас
-    const meas = document.createElement('span');
-    meas.style.position = 'absolute';
-    meas.style.left = '-999999px';
-    meas.style.top = '-999999px';
-    meas.style.whiteSpace = 'nowrap';
-    meas.style.fontWeight = '900';
-    meas.style.letterSpacing = '.01em';
-    meas.style.fontFamily = getComputedStyle(btn).fontFamily;
-    document.body.appendChild(meas);
-
-    let size = 28; // стартуем с крупного
-    meas.style.fontSize = size + 'px';
-    meas.textContent = longest || '—';
-
-    // Понижаем размер, пока не влезет, до минимума 18px
-    while (meas.offsetWidth > maxWidth && size > 18) {
-      size -= 1;
-      meas.style.fontSize = size + 'px';
-    }
-    document.body.removeChild(meas);
-    btn.style.fontSize = size + 'px';
-  } catch {}
-}
+/* Дубликат старых функций селектора удалён — см. актуальные реализации ниже */
 /* Текущий «выбранный ключ» для заголовка селектора */
 let __albumSelectorKey = null;
 /* Запоминаем вычисленный размер шрифта заголовка, чтобы применить к списку */
@@ -2568,7 +2558,11 @@ function getMenuItemsInOrder() {
 
 function setAlbumTitleText(title) {
   const btn = document.getElementById('album-title-button');
-  if (btn) btn.textContent = title || '—';
+  const span = document.getElementById('album-title-text');
+  const text = title || '—';
+  if (span) span.textContent = text;
+  else if (btn) btn.textContent = text;
+  if (btn) btn.setAttribute('title', text);
 }
 
 /* Подбор размера шрифта для заголовка; применять тот же размер к .album-menu */
@@ -2618,13 +2612,30 @@ function rebuildAlbumMenu(currentKey) {
 
   // Формируем список без текущего ключа
   const rest = all.filter(x => x.key !== currentKey);
-  menu.innerHTML = rest.map(it => `<div class="album-menu-item" data-key="${it.key}" role="option" aria-selected="false">${it.title}</div>`).join('');
+  menu.innerHTML = rest.map(it => {
+    const extra = (it.key === SPECIAL_FAVORITES_KEY) ? ' album-menu-item fav' : ' album-menu-item';
+    return `<div class="${extra}" data-key="${it.key}" role="option" aria-selected="false">${it.title}</div>`;
+  }).join('');
 
   // Открыть/закрыть выпадающий список
   btn.onclick = () => {
     const open = menu.classList.toggle('open');
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
   };
+// Закрывать меню по клику вне
+function onDocClick(e){
+  const opened = menu.classList.contains('open');
+  if (!opened) return;
+  const within = e.target === btn || btn.contains(e.target) || e.target === menu || menu.contains(e.target);
+  if (!within) {
+    menu.classList.remove('open');
+    btn.setAttribute('aria-expanded', 'false');
+  }
+}
+document.addEventListener('click', onDocClick, { passive: true });
+// На всякий случай удалять слушатель при перестройке меню
+menu.__cleanupOutside && menu.__cleanupOutside();
+menu.__cleanupOutside = () => document.removeEventListener('click', onDocClick);
 
   // Обработчик выбора
   menu.querySelectorAll('.album-menu-item').forEach(el => {
