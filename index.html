@@ -472,17 +472,17 @@
       padding: 10px;
     }
 
-    /* Сам текст — переносим длинные строки, сохраняя переводы строк,
-       чтобы не было горизонтального скролла и «съедания» справа */
+    /* Сам текст: изначально БЕЗ переносов, чтобы сохранить структуру стихотворения
+       (на старте подбираем размер шрифта под самую длинную строку) */
     .lyrics-modal-pre {
       margin: 0;
       color: #eef4ff;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size: .98rem;
+      font-size: 1rem;
       line-height: 1.5;
-      white-space: pre-wrap;     /* сохраняем переводы строк, разрешаем перенос длинной строки */
-      word-break: break-word;    /* перенос длинных слов (дефисы/длинные тире и т.п.) */
-      overflow-wrap: anywhere;   /* страховка */
+      white-space: pre;          /* без переносов — как просили */
+      word-break: normal;
+      overflow-wrap: normal;
     }
 
     /* Низ модалки: две зоны — 1) ряд с лупами и копированием; 2) кнопка «Закрыть» */
@@ -545,6 +545,26 @@
       text-decoration: underline;
     }
     .lyrics-modal-btn:hover { opacity: .9; transform: translateY(-1px); }
+    /* Полноэкранный режим панели модалки (элемент .lyrics-modal уходим в FS) */
+    .lyrics-modal:fullscreen {
+      width: 100vw !important;
+      max-width: 100vw !important;
+      height: 100dvh !important;
+      border-radius: 0 !important;
+      margin: 0 !important;
+      padding: 12px !important;
+    }
+
+    /* Когда в FS — область контента растягиваем на всю высоту */
+    .lyrics-modal:fullscreen .lyrics-modal-content {
+      flex: 1 1 auto;
+    }
+
+    /* Кнопка ⛶: чуть больше иконка */
+    .lyrics-square-btn svg {
+      width: 22px;
+      height: 22px;
+    }
 
     /* Клик по подложке закрывает окно */
     #lyrics-text-modal.active { display: flex; }
@@ -702,23 +722,33 @@
 
         <!-- сетка из трёх одинаковых квадратных кнопок -->
         <div class="lyrics-controls-grid">
+          <!-- Уменьшить -->
           <button class="lyrics-square-btn" type="button" title="Уменьшить" aria-label="Уменьшить" onclick="zoomLyrics(-1)">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
-              <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zM9.5 14C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 5L20.49 19l-5-5zM9.5 14C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
               <rect x="7" y="9" width="5" height="1.8" rx=".9"></rect>
             </svg>
           </button>
 
-          <button class="lyrics-square-btn" type="button" title="Поделиться" aria-label="Поделиться" onclick="shareLyricsFromModal()">
-            <!-- универсальный символ «поделиться» -->
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
-              <path d="M14 9l-4-4v3H5v2h5v3l4-4zM19 13v5H5v-5H3v7h18v-7h-2z"/>
+          <!-- Полноэкранный режим -->
+          <button class="lyrics-square-btn" id="lyrics-fs-btn" type="button" title="Полноэкранный режим" aria-label="Полноэкранный режим" onclick="toggleLyricsFullscreen()">
+            <!-- иконка ⛶ -->
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M3 10V3h7v2H5v5H3zm16-5h-5V3h7v7h-2V5zM5 19h5v2H3v-7h2v5zm16-5h2v7h-7v-2h5v-5z"/>
             </svg>
           </button>
 
+          <!-- Поделиться -->
+          <button class="lyrics-square-btn" type="button" title="Поделиться" aria-label="Поделиться" onclick="shareLyricsFromModal()">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+             <path d="M14 9l-4-4v3H5v2h5v3l4-4zM19 13v5H5v-5H3v7h18v-7h-2z"/>
+            </svg>
+          </button>
+
+          <!-- Увеличить -->
           <button class="lyrics-square-btn" type="button" title="Увеличить" aria-label="Увеличить" onclick="zoomLyrics(1)">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
-              <path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zM9.5 14C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0016 9.5 6.5 6.5 0 109.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 5L20.49 19l-5-5zM9.5 14C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
               <path d="M10.4 7.7h-1.8v1.8H6.8v1.8h1.8v1.8h1.8v-1.8h1.8V9.5h-1.8V7.7z"/>
             </svg>
           </button>
@@ -3483,6 +3513,115 @@ async function copyTextToClipboard(text) {
 
 /* ===== Модалка текста песни ===== */
 let __lyricsModalTextCache = ''; // кеш последнего загруженного текста (для копирования)
+/* Автоподбор шрифта для модалки «ТЕКСТ» */
+let __lyricsBaseFittedFontPx = null;  // автоматически подобранный базовый размер
+let __lyricsCurrFontPx = null;        // текущий (меняется кнопками +/-)
+let __lyricsUserZoomed = false;       // пользователь трогал +/- в этом открытии?
+
+function sanitizeFileName(name) {
+  return String(name || '')
+    .replace(/[\\/:*?"<>|]+/g, '_')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/* Вычисляем подходящий размер шрифта так, чтобы самая длинная строка
+   полностью помещалась в доступную ширину без переноса (white-space: pre). */
+function autoFitLyricsFont() {
+  try {
+    const pre = document.getElementById('lyrics-modal-pre');
+    const sc  = document.querySelector('#lyrics-text-modal .lyrics-modal-scroll');
+    if (!pre || !sc) return;
+    const text = pre.textContent || '';
+    const lines = text.split(/\r?\n/);
+
+    // Доступная ширина — внутренняя ширина скролл-контейнера
+    const targetWidth = Math.max(10, sc.clientWidth - 2); // небольшой запас
+
+    // Подготовим скрытый элемент-замерщик с теми же шрифтами, что и в <pre>
+    const cs = getComputedStyle(pre);
+    const meas = document.createElement('span');
+    meas.style.position = 'absolute';
+    meas.style.left = '-999999px';
+    meas.style.top = '-999999px';
+    meas.style.whiteSpace = 'pre';               // как у pre на старте
+    meas.style.fontFamily = cs.fontFamily;
+    meas.style.fontWeight = cs.fontWeight;
+    meas.style.letterSpacing = cs.letterSpacing;
+    meas.style.visibility = 'hidden';
+    document.body.appendChild(meas);
+
+    // Меряем на базовом размере (20px) и масштабируем
+    const basePx = 20;
+    meas.style.fontSize = basePx + 'px';
+    let maxLineWidthAtBase = 0;
+    for (const line of lines) {
+      meas.textContent = line || '';            // пустые строки допустимы
+      const w = meas.offsetWidth;
+      if (w > maxLineWidthAtBase) maxLineWidthAtBase = w;
+    }
+    meas.remove();
+
+    if (maxLineWidthAtBase <= 0) return;
+
+    // Прямое вычисление нужного размера с точностью до 0.1px
+    let fitted = (targetWidth / maxLineWidthAtBase) * basePx;
+
+    // Адекватные пределы
+    const MIN = 10, MAX = 48;
+    fitted = Math.max(MIN, Math.min(MAX, fitted));
+
+    // Чуть-чуть запас, чтобы право/лево выглядели ровно
+    fitted = Math.max(MIN, Math.min(MAX, fitted * 0.995));
+
+    __lyricsBaseFittedFontPx = parseFloat(fitted.toFixed(1));
+    __lyricsCurrFontPx = __lyricsBaseFittedFontPx;
+    __lyricsUserZoomed = false;
+
+    // Применяем и запрещаем переносы
+    pre.style.fontSize = __lyricsCurrFontPx + 'px';
+    pre.style.whiteSpace = 'pre';
+  } catch(e) {
+    // молча
+  }
+}
+
+/* При изменении размера контейнера (resize/orientation/fullscreen) — если пользователь не трогал +/-, пересчитать */
+function refitLyricsFontIfNeeded() {
+  const bg = document.getElementById('lyrics-text-modal');
+  if (!bg || !bg.classList.contains('active')) return;
+  if (!__lyricsUserZoomed) autoFitLyricsFont();
+}
+
+/* Полноэкранный режим панели модалки */
+function toggleLyricsFullscreen() {
+  try {
+    const panel = document.querySelector('#lyrics-text-modal .lyrics-modal');
+    if (!panel) return;
+    if (!document.fullscreenElement) {
+      if (panel.requestFullscreen) panel.requestFullscreen();
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+    }
+  } catch {}
+}
+
+/* Меняем подсказку на кнопке FS */
+function updateLyricsFsBtnIcon() {
+  const btn = document.getElementById('lyrics-fs-btn');
+  if (!btn) return;
+  const isFs = !!document.fullscreenElement;
+  btn.title = isFs ? 'Выйти из полноэкранного режима' : 'Полноэкранный режим';
+  btn.setAttribute('aria-label', btn.title);
+}
+
+/* Имя файла для «Поделиться текстом»: Название_песни - vi3na1bita.txt */
+function getLyricsShareFileName() {
+  const meta = getCurrentTrackMetaForText();
+  const base = meta?.title ? sanitizeFileName(meta.title) : 'lyrics';
+  return `${base} - vi3na1bita.txt`;
+}
+
 function getCurrentTrackMetaForText() {
   const pc = getPlayerConfig();
   const idx = (typeof playingTrack === 'number' && playingTrack >= 0) ? playingTrack : currentTrack;
@@ -3501,7 +3640,7 @@ async function openLyricsModal() {
   const titleEl = document.getElementById('lyrics-modal-title');
   if (titleEl) titleEl.textContent = meta.title || 'Текст песни';
 
-  // Включаем фон-анимацию (как у лирики) при активном режиме
+  // Анимированный фон — по состоянию анимации лирики
   try {
     const bg = document.querySelector('#lyrics-text-modal .lyrics-animated-bg');
     if (bg) {
@@ -3510,15 +3649,13 @@ async function openLyricsModal() {
     }
   } catch {}
 
-  // Показываем модалку сразу, наполняем текст после загрузки
+  // Показываем модалку сразу
   const modal = document.getElementById('lyrics-text-modal');
   modal.classList.add('active');
-
-  // Клик по подложке — закрыть
   modal.onclick = (e) => { if (e.target === modal) closeLyricsModal(); };
 
   const pre = document.getElementById('lyrics-modal-pre');
-  const sc = document.querySelector('#lyrics-text-modal .lyrics-modal-scroll');
+  const sc  = document.querySelector('#lyrics-text-modal .lyrics-modal-scroll');
   if (pre) pre.textContent = 'Загрузка...';
 
   try {
@@ -3529,16 +3666,11 @@ async function openLyricsModal() {
     if (pre) {
       pre.textContent = txt;
 
-      // Задаём ширину модалки по плееру/экрану, сбрасываем зум к базовому
+      // Выставляем ширину модалки и подбираем шрифт под самую длинную строку
       requestAnimationFrame(() => {
-        try {
-          sizeLyricsModalToPlayer();    // ширина = ширине плеера (desktop) или = 100vw (mobile)
-          // базовый размер шрифта — текущий из CSS
-          const basePx = parseFloat(getComputedStyle(pre).fontSize) || 16;
-          __lyricsCurrFontPx = basePx;
-          // Сбрасываем прокрутку в начало
-          if (sc) { sc.scrollTop = 0; sc.scrollLeft = 0; }
-        } catch {}
+        sizeLyricsModalToPlayer();
+        autoFitLyricsFont();     // ключевое — подгоняем размер (white-space: pre)
+        if (sc) { sc.scrollTop = 0; sc.scrollLeft = 0; }
       });
     }
   } catch {
@@ -3578,12 +3710,24 @@ function sizeLyricsModalToPlayer() {
   modal.style.setProperty('--lyrics-modal-width', target + 'px');
 }
 
-/* Закрепим пересчёт при ресайзе/повороте, пока модалка открыта */
+/* Пересчёт ширины панели и шрифта при ресайзе/повороте, пока модалка открыта */
 function __onLyricsResize() {
   const modalBg = document.getElementById('lyrics-text-modal');
   if (!modalBg || !modalBg.classList.contains('active')) return;
   sizeLyricsModalToPlayer();
+  // Если юзер не трогал +/- — подгоняем заново
+  refitLyricsFontIfNeeded();
 }
+window.addEventListener('resize', __onLyricsResize);
+window.addEventListener('orientationchange', __onLyricsResize);
+
+/* Отслеживаем смену полноэкранного состояния */
+document.addEventListener('fullscreenchange', () => {
+  updateLyricsFsBtnIcon();
+  // Подгоним ширину и шрифт
+  __onLyricsResize();
+});
+
 window.addEventListener('resize', __onLyricsResize);
 window.addEventListener('orientationchange', __onLyricsResize);
 
@@ -3591,23 +3735,28 @@ window.addEventListener('orientationchange', __onLyricsResize);
 async function shareLyricsFromModal() {
   try {
     const content = __lyricsModalTextCache || '';
+    const fileName = getLyricsShareFileName();
     const blob = new Blob([content], { type: 'text/plain' });
-    const file = new File([blob], 'lyrics.txt', { type: 'text/plain' });
+    const file = new File([blob], fileName, { type: 'text/plain' });
 
     if (navigator.share) {
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Текст песни', text: 'Текст песни — «Витрина Разбита»' });
+        await navigator.share({
+          files: [file],
+          title: 'Текст песни',
+          text: 'Текст песни — «Витрина Разбита»'
+        });
         return;
       }
-      // fallback: шарим просто текст (без файла)
+      // fallback: без файлов, просто текст
       await navigator.share({ title: 'Текст песни', text: content });
       return;
     }
 
-    // полифилл: скачать как файл
+    // Полифилл: скачиваем файл
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = 'lyrics.txt';
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     setTimeout(() => {
@@ -3615,7 +3764,7 @@ async function shareLyricsFromModal() {
       a.remove();
     }, 800);
   } catch (e) {
-    // на крайний случай — в буфер
+    // На крайний случай — в буфер обмена
     copyLyricsFromModal();
   }
 }
@@ -3627,17 +3776,35 @@ function zoomLyrics(delta) {
   const pre = document.getElementById('lyrics-modal-pre');
   if (!pre) return;
 
-  if (__lyricsCurrFontPx == null) {
-    __lyricsCurrFontPx = parseFloat(getComputedStyle(pre).fontSize) || 16;
+  // Если ещё не было базового расчёта — сделаем
+  if (__lyricsCurrFontPx == null || __lyricsBaseFittedFontPx == null) {
+    autoFitLyricsFont();
   }
-  const step = 2;
-  const minPx = 10;
-  const maxPx = 48;
 
-  if (delta < 0) __lyricsCurrFontPx = Math.max(minPx, __lyricsCurrFontPx - step);
-  else           __lyricsCurrFontPx = Math.min(maxPx, __lyricsCurrFontPx + step);
+  const step = 2;            // шаг в px
+  const MIN = 10, MAX = 64;  // чуть больше допустимого верха
 
-  pre.style.fontSize = __lyricsCurrFontPx + 'px';
+  if (delta > 0) {
+    // Увеличиваем и разрешаем переносы строк
+    __lyricsCurrFontPx = Math.min(MAX, __lyricsCurrFontPx + step);
+    pre.style.whiteSpace = 'pre-wrap';
+    pre.style.wordBreak = 'break-word';
+    pre.style.overflowWrap = 'anywhere';
+    __lyricsUserZoomed = true;
+  } else {
+    // Уменьшаем. Если вернулись к базовому значению — снова запретим переносы
+    __lyricsCurrFontPx = Math.max(MIN, __lyricsCurrFontPx - step);
+    if (Math.abs(__lyricsCurrFontPx - __lyricsBaseFittedFontPx) < 0.1) {
+      pre.style.whiteSpace = 'pre';
+      pre.style.wordBreak = 'normal';
+      pre.style.overflowWrap = 'normal';
+      __lyricsUserZoomed = false;
+    } else {
+      __lyricsUserZoomed = true;
+    }
+  }
+
+  pre.style.fontSize = __lyricsCurrFontPx.toFixed(1) + 'px';
 }
 
 /* ====== Скачивание альбома ====== */
