@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Новости — Голос Души на Яндекс Музыке</title>
+  <style>
+    :root{
+      --bg-0: #0b0e15;     /* базовый фон */
+      --bg-1: #0f1422;     /* панель/карта */
+      --bg-2: #0a0d17;     /* внутренний фон */
+      --text: #e8ecf6;     /* основной текст */
+      --muted: #a9b3c7;    /* вторичный */
+      --accent-1: #4aa3ff; /* акцент границы */
+      --accent-2: #7be3ff; /* акцент границы 2 */
+      --shadow: 0 12px 28px rgba(0,0,0,0.45), 0 3px 10px rgba(0,0,0,0.35);
+      --radius: 16px;
+      --radius-inner: 12px;
+    }
+    html,body{
+      height:100%;
+      margin:0;
+      background: radial-gradient(120% 120% at 10% 10%, #111827 0%, #0b0e15 45%, #070a12 100%);
+      color: var(--text);
+      font: 500 16px system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+    }
+    .wrap{
+      position:relative;
+      height:100%;
+      width:100%;
+      display:grid;
+      place-items:center;
+      padding:10px;
+      box-sizing:border-box;
+    }
+    /* Внешняя «градиентная рамка» */
+    .frame{
+      position:relative;
+      width:100%;
+      height:100%;
+      max-width:900px;
+      max-height:900px;
+      border-radius: var(--radius);
+      padding:1px; /* толщина рамки */
+      background: linear-gradient(135deg, rgba(74,163,255,0.85), rgba(123,227,255,0.85));
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    .card{
+      position:relative;
+      width:100%;
+      height:100%;
+      border-radius: calc(var(--radius) - 1px);
+      background:
+        radial-gradient(140% 120% at 80% 0%, rgba(27,41,72,0.55), transparent 60%),
+        radial-gradient(120% 140% at 0% 100%, rgba(18,30,58,0.6), transparent 55%),
+        var(--bg-1);
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+      padding:16px;
+      box-sizing:border-box;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    .badge{
+      align-self:flex-start;
+      font-size:12px;
+      letter-spacing:.14em;
+      text-transform:uppercase;
+      color: var(--muted);
+      padding:6px 10px;
+      border-radius:999px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+      border:1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(2px);
+    }
+    .title{
+      font-weight:700;
+      font-size: clamp(18px, 3vw, 24px);
+      line-height:1.25;
+      margin:0 4px;
+      color: var(--text);
+      text-shadow: 0 1px 0 rgba(0,0,0,0.25);
+    }
+    .subtitle{
+      margin: -6px 4px 2px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    /* Квадратная зона плеера */
+    .embed{
+      position:relative;
+      margin-top: 4px;
+      width:100%;
+      flex: 1 1 auto;
+      aspect-ratio: 1 / 1; /* удерживаем квадрат */
+      border-radius: var(--radius-inner);
+      background:
+        radial-gradient(120% 140% at 50% 50%, rgba(10,13,23,0.8), rgba(6,8,15,0.92)),
+        var(--bg-2);
+      border:1px solid rgba(255,255,255,0.07);
+      overflow:hidden;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,0.03), 0 10px 24px rgba(0,0,0,0.45);
+    }
+    /* Делаем сам iframe Я.Музыки резиновым на весь квадрат */
+    .embed iframe{
+      position:absolute;
+      inset:0;
+      width:100% !important;
+      height:100% !important;
+      border:0 !important;
+      display:block;
+      background: transparent;
+    }
+
+    /* Низ карточки */
+    .footer{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-top: 4px;
+    }
+    .hint{
+      color: var(--muted);
+      font-size: 12px;
+      opacity: .9;
+    }
+    .cta{
+      padding:8px 12px;
+      border-radius:10px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.07), rgba(255,255,255,0.03));
+      border: 1px solid rgba(255,255,255,0.10);
+      color: var(--text);
+      text-decoration:none;
+      font-weight:600;
+      transition: transform .12s ease, background .2s ease;
+    }
+    .cta:hover{ transform: translateY(-1px); }
+    .cta:active{ transform: translateY(0); }
+
+    /* На очень маленьких высотах слегка уменьшаем отступы */
+    @media (max-height: 420px){
+      .card{ padding:12px; gap:10px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="frame">
+      <section class="card" role="region" aria-label="Новостной баннер — Голос Души">
+        <div class="badge">Новости</div>
+        <h1 class="title">«Голос Души» — уже на Яндекс&nbsp;Музыке</h1>
+        <p class="subtitle">Слушайте новый альбом группы «Витрина Разбита»</p>
+
+        <div class="embed" role="group" aria-label="Плеер Яндекс Музыки">
+          <!-- ВАШ ВСТАВЛЕННЫЙ КОД Яндекс Музыки (адаптивный на весь квадрат) -->
+          <iframe
+            frameborder="0"
+            allow="clipboard-write"
+            style="border:none;width:614px;height:614px;"
+            width="614"
+            height="614"
+            src="https://music.yandex.ru/iframe/album/38188979">
+              Слушайте <a href="https://music.yandex.ru/album/38188979?utm_source=web&utm_medium=copy_link">Голос Души</a> — <a href="https://music.yandex.ru/artist/24739002">Витрина Разбита</a> на Яндекс Музыке
+          </iframe>
+        </div>
+
+        <div class="footer">
+          <div class="hint">Совет: нажмите «поделиться» в плеере, чтобы рассказать друзьям</div>
+          <a class="cta" href="https://music.yandex.ru/album/38188979?utm_source=web&utm_medium=copy_link" target="_blank" rel="noopener">Открыть альбом</a>
+        </div>
+      </section>
+    </div>
+  </div>
+</body>
+</html>
