@@ -1,20 +1,20 @@
 /* service-worker.js
-   v8.0.1 — оптимальные стратегии, offline toggle, офлайн-загрузка в album-offline-v1,
-   JSON (config/index.json) — network-first c быстрым таймаутом, изображения — cache-first,
-   аудио — stale-while-revalidate, навигация — fallback на index.html из core.
+   v8.0.1 — оптимальные стратегии для новой архитектуры.
+   - JSON (config/index.json): network-first с быстрым таймаутом (4s).
+   - Изображения (включая WebP, thumbnails): cache-first.
+   - Аудио: stale-while-revalidate.
+   - Навигация (HTML): network-first с fallback на index.html.
+   - В offlineMode: cache-first для всех ресурсов.
 */
-
-const SW_VERSION = '8.0.1';
-
+const SW_VERSION = '8.0.2';
 const CORE_CACHE    = `core-v${SW_VERSION}`;
 const RUNTIME_CACHE = `runtime-v${SW_VERSION}`;
 const IMAGE_CACHE   = `images-v${SW_VERSION}`;
 const MEDIA_CACHE   = `media-v${SW_VERSION}`;
-const OFFLINE_DL_CACHE = 'album-offline-v1'; // для офлайн-пакета (UI прогресс проверяет именно этот кэш)
-
+const OFFLINE_DL_CACHE = 'album-offline-v1';
 let offlineMode = false;
 
-// Базовые оффлайн-ресурсы (минимальный набор)
+// Основные ресурсы для быстрого старта и офлайн-режима
 const CORE_ASSETS = [
   './',
   './index.html',
@@ -23,13 +23,15 @@ const CORE_ASSETS = [
   './img/logo.png',
   './img/star.png',
   './img/star2.png',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/icon-192-maskable.png',
-  './icons/icon-512-maskable.png'
+  // Иконки альбомов для быстрого отображения
+  './img/icon_album/icon-album-00.png',
+  './img/icon_album/icon-album-01.png',
+  './img/icon_album/icon-album-02.png',
+  './img/icon_album/icon-album+00.png',
+  './img/icon_album/icon-album-news.png'
 ];
 
-// Утилита: fetch с таймаутом и опциональной записью в кэш
+// Утилита для безопасного fetch с таймаутом
 async function safeFetch(request, { timeout = 15000, cacheName = null, putWhen = (res) => res && res.ok } = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeout);
@@ -39,7 +41,7 @@ async function safeFetch(request, { timeout = 15000, cacheName = null, putWhen =
       try {
         const cache = await caches.open(cacheName);
         await cache.put(request, res.clone());
-      } catch {}
+      } catch (e) { console.warn('SW: Cache put failed', e); }
     }
     return res;
   } finally {
@@ -47,50 +49,40 @@ async function safeFetch(request, { timeout = 15000, cacheName = null, putWhen =
   }
 }
 
-// Рассылки в клиенты
+// Рассылка сообщений всем открытым вкладкам
 async function broadcast(msg) {
   try {
     const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' });
     clients.forEach(c => c.postMessage(msg));
-  } catch {}
+  } catch (e) { console.warn('SW: Broadcast failed', e); }
 }
 
-// Типы ресурсов
-function isJson(url)    { return /\.json(\?|#|$)/i.test(url.pathname); }
-function isImage(url)   { return /\.(?:png|jpg|jpeg|webp|avif|gif|svg)(\?|#|$)/i.test(url.pathname); }
-function isFont(url)    { return /\.(?:woff2?|ttf|otf)(\?|#|$)/i.test(url.pathname); }
-function isAudio(url)   { return /\.(?:mp3|m4a|aac|ogg|wav|flac)(\?|#|$)/i.test(url.pathname); }
-function isHtml(url)    { return /\.html(\?|#|$)/i.test(url.pathname); }
+// Определение типа ресурса по URL
+function isNavigation(url) { return url.pathname.endsWith('/') || url.pathname.endsWith('.html'); }
+function isJson(url)       { return /\.json(\?|#|$)/i.test(url.pathname); }
+function isImage(url)      { return /\.(?:png|jpg|jpeg|webp|avif|gif|svg)(\?|#|$)/i.test(url.pathname); }
+function isAudio(url)      { return /\.(?:mp3|m4a|aac|ogg|wav|flac)(\?|#|$)/i.test(url.pathname); }
 
-function isGalleryIndexJson(url) {
-  // albums/gallery/<id>/index.json
-  return /\/albums\/gallery\/[^/]+\/index\.json$/i.test(url.pathname);
-}
-function isAlbumConfigJson(url) {
-  // config.json любых альбомов
-  return /\/config\.json$/i.test(url.pathname);
-}
-
-// Установка: предкэшируем core
+// Установка: предкэшируем основные ресурсы
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CORE_CACHE);
     try {
       await cache.addAll(CORE_ASSETS);
-    } catch {
-      // В dev/GitHub Pages часть ассетов может отсутствовать — игнорируем
+    } catch (e) {
+      console.warn('SW: Core assets pre-cache failed, continuing...', e);
     }
+    // Сразу активируем нового SW
     await self.skipWaiting();
   })());
 });
 
-// Активация: чистим старые кэши
+// Активация: удаляем старые кэши
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const names = await caches.keys();
     await Promise.all(
       names.map((name) => {
-        // удаляем прошлые версии кэшей, оставляем текущие и OFFLINE_DL_CACHE
         if (
           (name.startsWith('core-v')    && name !== CORE_CACHE) ||
           (name.startsWith('runtime-v') && name !== RUNTIME_CACHE) ||
@@ -99,90 +91,77 @@ self.addEventListener('activate', (event) => {
         ) {
           return caches.delete(name);
         }
-        return Promise.resolve(false);
+        return Promise.resolve();
       })
     );
+    // Немедленно начинаем контролировать все вкладки
     await self.clients.claim();
     broadcast({ type: 'OFFLINE_STATE', value: offlineMode });
   })());
 });
 
-// Стратегии:
-// - NAVIGATE: network-first с fallback на index.html из CORE
-// - JSON (config.json и albums/gallery/*/index.json): network-first c таймаутом 4s -> cache
-// - Images/Fonts: cache-first (IMAGE_CACHE)
-// - Audio: stale-while-revalidate (MEDIA_CACHE)
-// - HTML баннеры внутри albums/gallery: cache-first
-// - Остальное: network-first с таймаутом 8s -> runtime cache
-// - В offlineMode: cache-first для всего
+// Обработка сетевых запросов
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
-
   const url = new URL(req.url);
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
 
-  // Навигация
-  if (req.mode === 'navigate') {
+  // Стратегия для навигации
+  if (isNavigation(url)) {
     event.respondWith((async () => {
       try {
         const res = await safeFetch(req, { timeout: 8000, cacheName: CORE_CACHE });
         if (res && res.ok) return res;
         throw new Error('nav-net-fail');
-      } catch {
+      } catch (e) {
         const cache = await caches.open(CORE_CACHE);
         const fallbackUrl = new URL('index.html', self.registration.scope).toString();
         const cached = await cache.match(fallbackUrl);
-        return cached || Response.error();
+        return cached || new Response('Offline', { status: 503 });
       }
     })());
     return;
   }
 
-  // OFFLINE режим — cache-first для всего
+  // Если включен офлайн-режим, используем cache-first для всего
   if (offlineMode) {
     event.respondWith((async () => {
       const cacheName = isImage(url) ? IMAGE_CACHE : isAudio(url) ? MEDIA_CACHE : RUNTIME_CACHE;
       const cache = await caches.open(cacheName);
       const hit = await cache.match(req, { ignoreSearch: false });
       if (hit) return hit;
-      try {
-        const res = await safeFetch(req);
-        if (res && (res.ok || res.type === 'opaque')) {
-          try { await cache.put(req, res.clone()); } catch {}
-          return res;
-        }
-      } catch {}
       const any = await caches.match(req, { ignoreSearch: false });
-      return any || Response.error();
+      return any || new Response('Offline', { status: 503 });
     })());
     return;
   }
 
-  // Обычный режим
+  // Обычный режим работы
   event.respondWith((async () => {
-    // JSON конфиги/индексы галерей — network-first с быстрым таймаутом
-    if (isJson(url) && (isGalleryIndexJson(url) || isAlbumConfigJson(url))) {
+    // JSON-файлы (альбомы и галереи) - network-first
+    if (isJson(url)) {
       try {
         const res = await safeFetch(req, { timeout: 4000, cacheName: RUNTIME_CACHE });
         if (res && res.ok) return res;
         throw new Error('json-net-fail');
-      } catch {
+      } catch (e) {
         const cached = await caches.match(req, { ignoreSearch: false });
-        return cached || Response.error();
+        return cached || new Response('Not found', { status: 404 });
       }
     }
 
-    // Картинки/шрифты — cache-first с фоновым обновлением
-    if (isImage(url) || isFont(url)) {
+    // Изображения (включая WebP) - cache-first
+    if (isImage(url)) {
       const cache = await caches.open(IMAGE_CACHE);
       const cached = await cache.match(req, { ignoreSearch: false });
       if (cached) {
+        // Фоновое обновление кэша
         event.waitUntil((async () => {
           try {
             const fresh = await safeFetch(req);
-            if (fresh && (fresh.ok || fresh.type === 'opaque')) {
-              try { await cache.put(req, fresh.clone()); } catch {}
+            if (fresh && fresh.ok) {
+              await cache.put(req, fresh.clone());
             }
           } catch {}
         })());
@@ -190,22 +169,22 @@ self.addEventListener('fetch', (event) => {
       }
       try {
         const res = await safeFetch(req);
-        if (res && (res.ok || res.type === 'opaque')) {
-          try { await cache.put(req, res.clone()); } catch {}
+        if (res && res.ok) {
+          await cache.put(req, res.clone());
           return res;
         }
       } catch {}
-      return Response.error();
+      return new Response('Image not found', { status: 404 });
     }
 
-    // Аудио — stale-while-revalidate
+    // Аудио - stale-while-revalidate
     if (isAudio(url)) {
       const cache = await caches.open(MEDIA_CACHE);
       const cached = await cache.match(req, { ignoreSearch: false });
-      const netPromise = (async () => {
+      const networkFetch = (async () => {
         try {
           const res = await safeFetch(req);
-          if (res && (res.ok || res.type === 'opaque')) {
+          if (res && res.ok) {
             try { await cache.put(req, res.clone()); } catch {}
             return res;
           }
@@ -213,89 +192,61 @@ self.addEventListener('fetch', (event) => {
         return null;
       })();
       if (cached) {
-        event.waitUntil(netPromise);
+        event.waitUntil(networkFetch);
         return cached;
       }
-      const net = await netPromise;
-      return net || Response.error();
+      const networkResponse = await networkFetch;
+      return networkResponse || new Response('Audio not found', { status: 404 });
     }
 
-    // HTML из альбомных галерей (news баннеры) — cache-first
-    if (isHtml(url) && /\/albums\/gallery\//i.test(url.pathname)) {
-      const cache = await caches.open(RUNTIME_CACHE);
-      const cached = await cache.match(req, { ignoreSearch: false });
-      if (cached) return cached;
-      try {
-        const res = await safeFetch(req);
-        if (res && (res.ok || res.type === 'opaque')) {
-          try { await cache.put(req, res.clone()); } catch {}
-          return res;
-        }
-      } catch {}
-      return Response.error();
-    }
-
-    // Остальное — network-first
+    // Для остальных ресурсов (JS, CSS и т.д.)
     try {
       const res = await safeFetch(req, { timeout: 8000, cacheName: RUNTIME_CACHE });
-      if (res && (res.ok || res.type === 'opaque')) return res;
+      if (res && res.ok) return res;
       throw new Error('net-fail');
-    } catch {
+    } catch (e) {
       const cached = await caches.match(req, { ignoreSearch: false });
-      return cached || Response.error();
+      return cached || new Response('Resource not found', { status: 404 });
     }
   })());
 });
 
-// Сообщения от страницы
+// Обработка сообщений от основного приложения
 self.addEventListener('message', (event) => {
   const data = event.data || {};
   const type = data.type;
-
   if (type === 'SET_OFFLINE_MODE') {
     offlineMode = !!data.value;
     broadcast({ type: 'OFFLINE_STATE', value: offlineMode });
-    return;
-  }
-
-  if (type === 'REQUEST_OFFLINE_STATE') {
+  } else if (type === 'REQUEST_OFFLINE_STATE') {
     broadcast({ type: 'OFFLINE_STATE', value: offlineMode });
-    return;
-  }
-
-  if (type === 'CACHE_FILES') {
+  } else if (type === 'CACHE_FILES') {
     const files = Array.isArray(data.files) ? data.files : [];
     event.waitUntil(cacheFilesForOffline(files));
-    return;
-  }
-
-  if (type === 'CLEAR_CACHE') {
+  } else if (type === 'CLEAR_CACHE') {
     event.waitUntil((async () => {
       try {
-        // Полностью чистим динамические кэши
         await caches.delete(RUNTIME_CACHE);
         await caches.delete(IMAGE_CACHE);
         await caches.delete(MEDIA_CACHE);
         await caches.delete(OFFLINE_DL_CACHE);
-        // Воссоздадим
+        // Воссоздаем кэши
         await caches.open(RUNTIME_CACHE);
         await caches.open(IMAGE_CACHE);
         await caches.open(MEDIA_CACHE);
         await caches.open(OFFLINE_DL_CACHE);
-      } catch {}
-      if (typeof data.offlineMode !== 'undefined') {
+      } catch (e) { console.warn('SW: Cache clear failed', e); }
+      if (data.offlineMode !== undefined) {
         offlineMode = !!data.offlineMode;
         broadcast({ type: 'OFFLINE_STATE', value: offlineMode });
       }
     })());
-    return;
   }
 });
 
-// Кэширование набора файлов для офлайн-режима (в тот самый album-offline-v1)
+// Функция для кэширования файлов в офлайн-режиме
 async function cacheFilesForOffline(urls) {
   const offlineCache = await caches.open(OFFLINE_DL_CACHE);
-
   for (const raw of urls) {
     try {
       const req = new Request(raw, { mode: 'no-cors', credentials: 'omit', redirect: 'follow' });
@@ -303,10 +254,11 @@ async function cacheFilesForOffline(urls) {
       if (res && (res.ok || res.type === 'opaque')) {
         try {
           await offlineCache.put(req, res.clone());
-        } catch {}
+        } catch (e) { console.warn('SW: Offline cache put failed', e); }
       }
-    } catch {
-      // игнорируем ошибки отдельных файлов
+    } catch (e) {
+      // Игнорируем ошибки отдельных файлов
+      console.warn('SW: Failed to cache for offline', raw, e);
     }
   }
 }
