@@ -5,26 +5,24 @@
   <title>Витрина Разбита</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Официальные альбомы группы Витрина Разбита. Слушайте онлайн и офлайн.">
-
   <!-- PWA -->
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#181818" />
-
   <!-- iOS -->
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Витрина Разбита">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-
   <!-- Preload -->
   <link rel="preload" href="img/logo.png" as="image">
-
   <!-- FAVICONS -->
   <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
   <link rel="alternate icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="alternate icon" href="icons/favicon-16.png" sizes="16x16" type="image/png">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-
+  <!-- Импорт новых модулей -->
+  <script type="module" src="./AudioController.js"></script>
+  <script type="module" src="./GlobalState.js"></script>
   <style>
     :root {
       --primary-bg: #181818;
@@ -44,7 +42,6 @@
       margin: 0; padding: 0; display: flex; flex-direction: column; min-width: 100vw;
       padding-top: env(safe-area-inset-top);
     }
-
     /* Промокод */
     #promocode-block {
       position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
@@ -70,9 +67,7 @@
     #promo-btn:hover:not(:disabled) { opacity: .8; }
     #promo-btn:disabled { opacity: .5; cursor: not-allowed; }
     #promo-error { color: #ff6b6b; margin-top: 10px; font-size: 14px; }
-
     .hidden { display: none !important; }
-
     /* Основной блок */
     #main-block { max-width: 420px; margin: 0 auto; flex: 1 0 auto; display: flex; flex-direction: column; align-items: center; width: 100%; padding: 0 10px; }
     header { width: 100%; text-align: center; margin: 0 auto; }
@@ -93,7 +88,6 @@
     }
     .active-album-title.fav{ color: #ffd166; letter-spacing: .06em; }
     .active-album-title.news{ color: #8ab8fd; letter-spacing: .02em; }
-
     /* Обложка/галерея */
     #cover-wrap { width: 100%; max-width: 400px; margin: 14px auto 0 auto; aspect-ratio: 1/1; display: flex; align-items: center; justify-content: center; position: relative; }
     .cover-gallery-arrow {
@@ -104,7 +98,6 @@
     #cover-gallery-arrow-left { left: 7px; }
     #cover-gallery-arrow-right { right: 7px; }
     #cover-wrap.gallery-nav-ready .cover-gallery-arrow { visibility: visible; pointer-events: auto; }
-
     /* Слот под картинку/баннер */
     #cover-slot {
       width: 100%;
@@ -124,18 +117,15 @@
       background: transparent;
     }
     #cover-slot img { object-fit: contain; }
-
     /* Лого */
     .logo-bottom {
       max-width: 112px; width: 23vw; min-width: 66px; height: auto; display: block; margin: 0 auto 15px auto !important;
       cursor: pointer; transition: transform 0.1s ease-out; will-change: transform; transform: translateZ(0); transform-origin: center center; isolation: isolate; z-index: 10; position: relative;
     }
     #logo-bottom { will-change: transform; backface-visibility: hidden; transform: translateZ(0); }
-
     .socials-under-cover { margin: 14px auto 0 auto; width: 100%; max-width: 398px; text-align: center; font-size: 1.03em; display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
     .socials-under-cover a { color: var(--secondary-color); text-decoration: none; transition: color 0.2s; }
     .socials-under-cover a:hover { color: var(--text-color); }
-
     /* Треки */
     .track-list { margin: 0 auto; max-width: 370px; width: 100%; font-size: 1.05em; color: #eee; background: none; padding: 0; }
     .track-list.filtered .track:not(.is-favorite) { display: none !important; }
@@ -148,7 +138,6 @@
     .like-star:hover { filter: brightness(1.13); opacity: 1; transform: scale(1.1); }
     .like-star.animating { animation: starPulse 0.3s; }
     @keyframes starPulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.3); } }
-
     /* Лирика + Плеер */
     .lyrics-player-block { width: 100%; margin: 8px 0 3px 0; }
     #lyrics-window { width: 100%; background: rgba(34,34,34,0.98); border-radius: 12px; box-shadow: 0 8px 24px #0007; overflow: hidden; height: 8.5em; position: relative; display: flex; flex-direction: column; align-items: stretch; justify-content: center; margin-bottom: 7px; transition: height 0.2s ease, opacity 0.2s ease, margin 0.2s ease; will-change: height, opacity; }
@@ -158,17 +147,14 @@
     .lyrics-scroll { position: relative; z-index: 1; }
     .lyrics-window-line { opacity: 0.57; font-size: 1.13em; transition: all 0.2s; line-height: 1.7em; text-align: center; min-height: 1.7em; max-width: 97%; margin: 0 auto; color: #eee; white-space: pre-line; user-select: none; word-break: break-word; position: relative; z-index: 1; }
     .lyrics-window-line.active { color: var(--primary-color); font-weight: bold; opacity: 1; text-shadow: 0 1px 7px #73161644; background: rgba(0,0,0,0.07); border-radius: 8px; font-size: 1.19em; }
-
     .lyrics-animated-bg { position: absolute; inset:0; opacity:0; background: linear-gradient(45deg, rgba(232,1,0,0.15), rgba(77,170,255,0.15), rgba(232,1,0,0.15)); background-size: 400% 400%; animation: none; z-index:0; pointer-events:none; transition: opacity .5s; }
     .lyrics-animated-bg.active { opacity: 1; animation: lyricsGradient 10s ease infinite; }
     @keyframes lyricsGradient { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
     #lyrics-window.animation-active .lyrics-window-line { transition: opacity .3s ease; }
     #lyrics-window.animation-active .lyrics-window-line.active { animation: lyricsGlow 2s ease-in-out infinite; }
     @keyframes lyricsGlow { 0%,50%,100% { opacity:1 } }
-
     .audio-wrapper { width: 100%; max-width: 395px; margin: 0 auto; }
     #audio { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
-
     .player-controls { display:flex; flex-direction:column; gap:5px; margin:5px 0; padding:8px 10px; background:rgba(0,0,0,0.3); border-radius:12px; }
     .player-controls-row { display:flex; align-items:center; justify-content:center; gap:12px; }
     .player-control-btn {
@@ -179,7 +165,6 @@
     }
     .player-controls-row:first-child .player-control-btn { width:48px; height:48px; padding:8px; }
     .player-controls-row:first-child .player-control-btn svg { width:28px; height:28px; }
-
     .player-control-btn:hover { background: rgba(77,170,255,.2); transform: scale(1.1); }
     .player-control-btn:active { transform: scale(.95); }
     .player-control-btn.active,
@@ -189,30 +174,24 @@
     .player-control-btn.bit-btn { font-size:22px; font-weight:bold; }
     .player-control-btn.animation-active,
     .player-control-btn.bit-active { color: var(--primary-color); background: rgba(232,1,0,.2); }
-
     .player-control-btn svg { width:24px; height:24px; }
     .player-control-btn img { width: 22px; height: 22px; display: block; object-fit: contain; pointer-events: none; }
     .player-control-btn.favorites-active img { filter: drop-shadow(0 0 4px gold); }
     @keyframes pulseFav { 0%,100% { transform: scale(1); } 50% { transform: scale(1.1); } }
     .player-control-btn.favorites-active img { animation: pulseFav 2s infinite; }
-
     .player-control-btn.main { width:54px; height:54px; }
     .player-control-btn.main svg { width:30px; height:30px; }
-
     .player-progress-wrapper { width:100%; margin:3px 0 5px 0; position:relative; }
     .player-progress-bar { width:100%; height:6px; background: rgba(255,255,255,.1); border-radius:3px; position:relative; cursor:pointer; overflow:visible; }
     .player-progress-fill { height:100%; background: linear-gradient(90deg, var(--primary-color), var(--secondary-color)); width:0%; transition: width .1s linear; border-radius:3px; position:relative; }
     .player-progress-handle { position:absolute; top:50%; transform:translateY(-50%); width:20px; height:20px; background:#fff; border-radius:50%; box-shadow:0 2px 8px rgba(0,0,0,.3); right:-10px; z-index:2; }
-
     .time-in-controls { font-family: 'SF Mono', Monaco, 'Courier New', monospace; font-size:13px; color:var(--secondary-color); min-width:45px; text-align:center; user-select:none; }
-
     .volume-control-wrapper { width:100%; margin:5px 0; padding:0; position:relative; }
     .volume-track { position:absolute; top:50%; transform:translateY(-50%); width:100%; height:6px; background:rgba(255,255,255,.2); border-radius:3px; pointer-events:none; }
     .volume-fill { position:absolute; top:50%; transform:translateY(-50%); height:6px; background:var(--secondary-color); border-radius:3px; pointer-events:none; transition: width .1s; }
     .volume-slider { appearance:none; width:100%; height:20px; background:transparent; outline:none; cursor:pointer; position:relative; z-index:2; }
     .volume-slider::-webkit-slider-thumb { appearance:none; width:20px; height:20px; background:#fff; border-radius:50%; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.3); }
     .volume-slider::-moz-range-thumb { width:20px; height:20px; background:#fff; border-radius:50%; cursor:pointer; border:none; box-shadow:0 2px 8px rgba(0,0,0,.3); }
-
     /* Sleep */
     .sleep-timer-btn { background:none; border:none; color:var(--secondary-color); cursor:pointer; padding:8px; border-radius:50%; transition:.2s; display:flex; align-items:center; justify-content:center; width:44px; height:44px; position:relative; }
     .sleep-timer-btn:hover { background: rgba(77,170,255,.2); transform: scale(1.1); }
@@ -222,7 +201,6 @@
     .sleep-menu.active { display:block; animation: slideUp .2s; }
     .sleep-menu-item { padding:8px 12px; cursor:pointer; border-radius:6px; transition: background .2s; white-space:nowrap; color:var(--text-color); }
     .sleep-menu-item:hover { background: rgba(255,255,255,.1); }
-
     .sleep-overlay { position: fixed; inset:0; background: rgba(0,0,0,.95); display:none; align-items:center; justify-content:center; z-index:10000; }
     .sleep-overlay.active { display:flex; animation: fadeIn .5s; }
     .sleep-content { text-align:center; padding:40px; max-width:400px; }
@@ -234,7 +212,6 @@
     .sleep-btn-primary { background: var(--primary-color); color:#fff; }
     .sleep-btn-secondary { background: rgba(255,255,255,.1); color: var(--text-color); }
     .sleep-btn:hover { opacity:.8; }
-
     /* Кнопка лирики и прочие нижние кнопки */
     .lyrics-toggle-btn { position:absolute; left:10px; top:50%; transform: translateY(-50%); width:44px; height:44px; background:none; border:none; cursor:pointer; padding:0; display:flex; align-items:center; justify-content:center; font-weight:bold; transition:.2s; user-select:none; z-index:5; }
     .lyrics-toggle-btn-visual { font-size:36px; line-height:1; transition:.2s; pointer-events:none; }
@@ -242,35 +219,28 @@
     .lyrics-toggle-btn.lyrics-hidden .lyrics-toggle-btn-visual { color: var(--primary-color); font-size:36px; }
     .lyrics-toggle-btn.lyrics-expanded .lyrics-toggle-btn-visual { color: var(--secondary-color); font-size:20px; }
     .lyrics-toggle-btn:hover .lyrics-toggle-btn-visual { transform: scale(1.1); }
-
     .player-buttons-wrapper { display:flex; flex-direction:column; align-items:center; gap:9px; margin-top:10px; width:100%; position:relative; }
     .karaoke-btn, .player-download-btn {
       color: var(--secondary-color) !important; background:none; border:none; cursor:pointer; font-size:1em; text-transform:uppercase; font-weight:700; letter-spacing:.02em; text-decoration:underline; transition:.18s; padding:4px 16px; min-width:148px; text-align:center; border-radius:7px; display:block; margin: 0 auto;
     }
     .karaoke-btn:hover, .player-download-btn:hover { color:#fff !important; background:#273050; }
-
     .bottom-controls-center { display:flex; flex-direction:column; align-items:center; justify-content:center; margin:32px auto 0 auto; gap:8px; width:100%; max-width:280px; padding-bottom: env(safe-area-inset-bottom); }
-
     .filter-favorites-btn { display:block; margin:0 auto 15px auto; padding:10px 20px; background: linear-gradient(135deg,#2a2a2a,#1a1a1a); color: var(--secondary-color); border:2px solid var(--border-color); border-radius:12px; font-size:.95em; font-weight:bold; cursor:pointer; transition:.3s; text-align:center; min-width:100%; white-space:nowrap; box-shadow:0 2px 8px rgba(0,0,0,.3); }
     .filter-favorites-btn:hover { background: linear-gradient(135deg,#3a3a3a,#2a2a2a); border-color: var(--secondary-color); transform: translateY(-2px); box-shadow:0 4px 12px rgba(0,0,0,.5); }
     .filter-favorites-btn.filtered { background: linear-gradient(135deg,#4a1a1a,#2a0a0a); border-color: var(--primary-color); color:#fff; }
-
     #install-pwa-btn, #download-album-main {
       color:#fff; background: var(--secondary-color); border:none; border-radius:7px; font-size:1.07em; font-weight:bold; letter-spacing:.02em; margin:15px 0 5px 0; padding:8px 13px; cursor:pointer; width:98%; box-shadow:0 4px 14px #0005; transition: background .2s;
     }
     #download-album-main { background: var(--primary-color); font-size:1.09em; margin-bottom:8px; }
     #install-pwa-btn:hover { background:#3275c2; } #download-album-main:hover { background:#c60000; }
-
     .feedback-link, .support-link { color: var(--secondary-color) !important; text-decoration: underline !important; font-weight:700; text-transform:uppercase; letter-spacing:.03em; cursor:pointer; transition: color .18s; font-size:1em; display:block; text-align:center; width:100%; margin:0; }
     .feedback-link:hover, .support-link:hover { color:#fff !important; }
-
     .offline-btn { min-width:102px; height:38px; font-size:1.05em; font-weight:bold; border:none; border-radius:9px; cursor:pointer; letter-spacing:.07em; box-shadow:0 2px 8px #06000032; transition: background .2s, color .14s; display:block; margin:0 auto; }
     .offline-btn.online { background: var(--primary-color); color:#fff; }
     .offline-btn.offline { background:#27b34c; color:#fff; }
     .offline-progress { margin-top:11px; width:100%; height:8px; background:#222; border-radius:6px; overflow:hidden; box-shadow:0 1px 6px #222b; }
     .offline-progress-bar { height:100%; background:#2fed54; transition: width .33s; }
     .offline-desc { text-align:center; font-size:.97em; margin-top:5px; opacity:.85; }
-
     .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.62); display:none; align-items:center; justify-content:center; backdrop-filter: blur(4px); z-index: 99; }
     .modal-bg.active { display:flex; animation: fadeIn .3s; }
     @keyframes fadeIn { from{opacity:0} to{opacity:1} }
@@ -279,13 +249,11 @@
     .modal-feedback .bigclose { background:none; border:none; position:absolute; top:13px; right:13px; cursor:pointer; color:#eee; border-radius:50%; width:32px; height:32px; transition: transform .2s; }
     .modal-feedback .bigclose:hover { transform: scale(1.1); }
     .modal-feedback .bigclose svg { width:31px; height:31px; }
-
     .hotkeys-btn { color: var(--secondary-color) !important; text-decoration: underline !important; font-weight:700; text-transform:uppercase; letter-spacing:.03em; cursor:pointer; transition:color .18s; font-size:1em; display:block; text-align:center; width:100%; margin:0; background:none; border:none; padding:8px; }
     .hotkeys-btn:hover { color:#fff !important; }
     @media (max-width: 600px) { .hotkeys-btn { display:none !important; } }
     @media (display-mode: standalone) { .bottom-controls-center { padding-bottom: calc(env(safe-area-inset-bottom) + 10px); } }
     @media (hover:none) { .tooltip { display:none; } }
-
     /* Тосты */
     .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(100px); background: #2a2a2a; border-radius: 12px; padding: 15px 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.3); z-index: 9999; opacity: 0; transition: all 0.3s ease; max-width: 90%; word-wrap: break-word; pointer-events: none; }
     .toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
@@ -296,7 +264,6 @@
     .toast-error { border-left: 4px solid var(--primary-color); }
     .toast-warning { border-left: 4px solid #ff9800; }
     .toast-offline { border-left: 4px solid #666; }
-
     /* iOS установка */
     .ios-install-prompt { position: fixed; bottom:0; left:0; right:0; background:#1a1a1a; border-top-left-radius: 20px; border-top-right-radius: 20px; padding: 20px; transform: translateY(100%); transition: transform 0.3s ease; z-index: 10000; box-shadow: 0 -4px 20px rgba(0,0,0,0.3); }
     .ios-install-prompt.show { transform: translateY(0); }
@@ -304,27 +271,22 @@
     .ios-prompt-icon { width: 60px; height: 60px; margin-bottom: 15px; }
     .ios-prompt-close { position: absolute; top: 10px; right: 10px; background: none; border: none; color: #666; font-size: 28px; cursor: pointer; }
     .ios-prompt-button { background: var(--primary-color); color: white; border: none; padding: 12px 30px; border-radius: 25px; font-weight: bold; margin-top: 20px; cursor: pointer; }
-
     /* Мини‑режим плеера */
     #now-playing:empty { display: none; }
     .mini-mode .player-buttons-wrapper { display: none !important; }
-
     /* Ряд иконок альбомов */
     .album-icons { display: flex; gap: 10px; align-items: center; justify-content: center; margin: 12px auto 0 auto; max-width: 400px; overflow-x: auto; padding: 4px 0; }
     .album-icon { width: 60px; height: 60px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border-color); cursor: pointer; filter: grayscale(70%) brightness(.88); opacity: .72; transition: transform .15s, filter .15s, opacity .15s, box-shadow .15s, width .15s ease, height .15s ease; flex: 0 0 auto; }
     .album-icon.active { filter: none; opacity: 1; box-shadow: 0 2px 10px rgba(0,0,0,.35); width: 66px; height: 66px; }
     .album-icon:hover { transform: translateY(-2px); }
-
     /* Контейнер «Новости» */
     #reliz-container { width: 100%; max-width: 400px; margin: 12px auto 0 auto; }
     #reliz-container iframe, #reliz-container .embed-reliz { width: 100%; border: none; }
-
     /* Следующая в мини‑режиме */
     .next-up { display: none; margin: 8px 4px 0 4px; font-size: .98em; align-items: center; gap: 6px; }
     .mini-mode .next-up { display: flex; }
     .next-up .label { color: #8ab8fd; opacity: .9; }
     .next-up .title { color: var(--primary-color); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
-
     /* Модалка текста песни */
     #lyrics-text-modal { z-index: 110; }
     #lyrics-text-modal .lyrics-modal {
@@ -356,11 +318,9 @@
     .lyrics-modal-close { background: none; border: none; color: #cfe3ff; cursor: pointer; border-radius: 10px; width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; transition: transform .15s ease; z-index: 1; }
     .lyrics-modal-close:hover { transform: scale(1.05); }
     .lyrics-modal-close svg { width: 28px; height: 28px; }
-
     .lyrics-modal-content { position: relative; z-index: 1; flex: 1; display: flex; min-height: 0; padding: 8px 4px 8px 4px; }
     .lyrics-modal-scroll { position: relative; flex: 1; min-height: 0; overflow: auto; border-radius: 10px; border: 1px solid rgba(255,255,255,.08); background: rgba(0,0,0,.25); padding: 10px; }
     .lyrics-modal-pre { margin: 0; color: #eef4ff; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 1rem; line-height: 1.5; white-space: pre; word-break: normal; overflow-wrap: normal; }
-
     .lyrics-modal-buttons { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 8px; padding: 8px 4px 4px 4px; border-top: 1px solid rgba(255,255,255,.08); background: linear-gradient(0deg, rgba(255,255,255,.03), transparent); }
     .lyrics-modal-btn { padding: 12px 16px; border: none; border-radius: 10px; font-weight: 800; letter-spacing: .02em; cursor: pointer; color: var(--text-color); background: rgba(255,255,255,.12); transition: transform .12s ease, opacity .2s ease; }
     .lyrics-modal-btn.primary { background: none; color: var(--secondary-color); text-decoration: underline; }
@@ -371,14 +331,10 @@
     .lyrics-square-btn svg { width: 22px; height: 22px; }
     .lyrics-modal:fullscreen { width: 100vw !important; max-width: 100vw !important; height: 100dvh !important; border-radius: 0 !important; margin: 0 !important; padding: 12px !important; }
     .lyrics-modal:fullscreen .lyrics-modal-content { flex: 1 1 auto; }
-
     /* Клик по подложке закрывает окно */
     #lyrics-text-modal.active { display: flex; }
     #lyrics-text-modal { align-items: center; justify-content: center; }
   </style>
-<!-- В секции <head> вашего index.htm добавьте эти строки -->
-<script type="module" src="./AudioController.js"></script>
-<script type="module" src="./GlobalState.js"></script>
 </head>
 <body>
   <!-- Промокод -->
@@ -391,45 +347,35 @@
       <div id="promo-error"></div>
     </div>
   </div>
-
   <div id="main-block" class="hidden">
     <header>
       <div id="active-album-title" class="active-album-title">—</div>
       <div id="album-icons" class="album-icons" aria-label="Альбомы"></div>
       <select id="album-select" aria-label="Выбор альбома" style="display:none;"></select>
-
       <div id="cover-wrap">
         <button class="cover-gallery-arrow" id="cover-gallery-arrow-left" title="Назад" aria-label="Предыдущая обложка">
           <svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="16" fill="#23252e" opacity="0.65"/><polyline points="20,10 13,17 20,24" fill="none" stroke="#fff" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-
         <div id="cover-slot" aria-label="Обложка альбома"></div>
-
         <button class="cover-gallery-arrow" id="cover-gallery-arrow-right" title="Вперёд" aria-label="Следующая обложка">
           <svg width="34" height="34" viewBox="0 0 34 34"><circle cx="17" cy="17" r="16" fill="#23252e" opacity="0.65"/><polyline points="14,10 21,17 14,24" fill="none" stroke="#fff" stroke-width="2.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
-
       <div id="social-links" class="socials-under-cover"></div>
     </header>
-
     <div id="now-playing" style="width:100%; max-width:395px; margin:8px auto 0 auto;"></div>
     <div class="track-list" id="track-list"></div>
-
     <div class="bottom-controls-center">
       <button class="filter-favorites-btn" id="filter-favorites-btn" onclick="toggleFavoritesFilter()">Скрыть не отмеченные ⭐ песни</button>
       <img class="logo-bottom" id="logo-bottom" src="img/logo.png" alt="Логотип" onclick="handleLogoClick()"/>
-
       <button id="install-pwa-btn" style="display: none;">УСТАНОВИТЬ КАК ПРИЛОЖЕНИЕ</button>
       <button id="download-album-main" onclick="openAlbumDownloadModal()">СКАЧАТЬ ВЕСЬ АЛЬБОМ</button>
-
       <button class="hotkeys-btn" id="hotkeys-btn" style="display:none;" onclick="showHotkeysModal()">ГОРЯЧИЕ КЛАВИШИ</button>
       <span class="feedback-link" id="feedback-link">ОБРАТНАЯ СВЯЗЬ</span>
       <a class="support-link" id="support-link" href="#" target="_blank">ПОДДЕРЖАТЬ</a>
       <button class="offline-btn online" id="offline-btn" onclick="offlineUIClick()">ONLINE</button>
     </div>
   </div>
-
   <!-- Модалки: Обратная связь -->
   <div class="modal-bg" id="modal-feedback">
     <div class="modal-feedback" style="max-width:420px;">
@@ -442,7 +388,6 @@
       </div>
     </div>
   </div>
-
   <!-- Модалки скачивания -->
   <div class="modal-bg" id="download-modal">
     <div class="modal-feedback" style="max-width:400px;">
@@ -456,7 +401,6 @@
       <button class="offline-btn" style="width:98%;" onclick="closeDownloadModal()">Отмена</button>
     </div>
   </div>
-
   <div class="modal-bg" id="albumDownloadModal">
     <div class="modal-feedback" style="max-width: 400px;">
       <h2 style="text-align: center; margin-bottom: 25px;" id="album-title-modal">Альбом</h2>
@@ -473,7 +417,6 @@
       </div>
     </div>
   </div>
-
   <div class="modal-bg" id="sizeConfirmModal">
     <div class="modal-feedback" style="max-width: 350px;">
       <h3 style="text-align: center;">Подтверждение загрузки</h3>
@@ -488,7 +431,6 @@
       </div>
     </div>
   </div>
-
   <div class="modal-bg" id="downloadProgressModal">
     <div class="modal-feedback" style="max-width: 400px;">
       <h3 style="text-align: center; margin-bottom: 20px;">Подготовка архива</h3>
@@ -500,7 +442,6 @@
       </div>
     </div>
   </div>
-
   <!-- Модалка текста песни -->
   <div class="modal-bg" id="lyrics-text-modal">
     <div class="lyrics-modal" role="dialog" aria-modal="true" aria-labelledby="lyrics-modal-title">
@@ -529,7 +470,6 @@
       </div>
     </div>
   </div>
-
   <!-- Модалка горячих клавиш -->
   <div class="modal-bg" id="hotkeys-modal">
     <div class="modal-feedback hotkeys-modal">
@@ -570,162 +510,199 @@
       </div>
     </div>
   </div>
-
   <!-- Пустой контейнер под оффлайн модалки -->
   <div class="modal-bg" id="modal-offline"></div>
 
-<script>
-/* ====== Импорт новых модулей ====== */
-import { audioController } from './AudioController.js';
-import { globalState } from './GlobalState.js';
+  <!-- Входная точка для нового JavaScript-кода -->
+  <script type="module">
+    /* ====== Версия и настройки ====== */
+    const VERSION = '8.0.1';
+    const BUILD_DATE = '2025-11-02';
+    const PROMO_CODE = 'VITRINA2025';
 
-/* ====== Версия и настройки ====== */
-const VERSION = '8.0.1';
-const BUILD_DATE = '2025-11-02';
-const PROMO_CODE = 'VITRINA2025';
+    /* ====== Список альбомов: fallback ====== */
+    const ALBUMS_FALLBACK = [
+      { key: 'mezhdu-zlom-i-dobrom', title: 'Между Злом и Добром (2025)', base: 'https://apel-s-in.github.io/vi3na1bita-mezhdu-zlom-i-dobrom/' },
+      { key: 'golos-dushi',          title: 'Голос Души',                base: 'https://apel-s-in.github.io/vi3na1bita-golos-dushi/' },
+      { key: 'odnazhdi-v-skazke',    title: 'Однажды в сказке',          base: 'https://apel-s-in.github.io/vi3na1bita-odnazhdi-v-skazke/' },
+      { key: 'krevetochka',          title: 'КРЕВЕцTOCHKA',             base: 'https://apel-s-in.github.io/krevetochka/' }
+    ];
 
-/* ====== Список альбомов: fallback ====== */
-const ALBUMS_FALLBACK = [
-  { key: 'mezhdu-zlom-i-dobrom', title: 'Между Злом и Добром (2025)', base: 'https://apel-s-in.github.io/vi3na1bita-mezhdu-zlom-i-dobrom/' },
-  { key: 'golos-dushi',          title: 'Голос Души',                base: 'https://apel-s-in.github.io/vi3na1bita-golos-dushi/' },
-  { key: 'odnazhdi-v-skazke',    title: 'Однажды в сказке',          base: 'https://apel-s-in.github.io/vi3na1bita-odnazhdi-v-skazke/' },
-  { key: 'krevetochka',          title: 'КРЕВЕцTOCHKA',             base: 'https://apel-s-in.github.io/krevetochka/' }
-];
+    /* Импорт необходимых модулей */
+    import { audioController } from './AudioController.js';
+    import { globalState } from './GlobalState.js';
 
-/* ====== Глобальные переменные (теперь они в globalState) ====== */
-let albumsIndex = [];
-let albumBase = '';
-let config = null;
+    /* Глобальный хранилище данных, не связанное с состоянием воспроизведения */
+    let albumsIndex = [];
+    let albumBase = '';
+    let config = null;
 
-// Утилиты путей (без изменений)
-function normalizeBase(b) {
-  try {
-    const hasScheme = /^[a-z]+:\/\//i.test(String(b));
-    const u = new URL(String(b), hasScheme ? undefined : (location.origin + '/'));
-    return u.origin + u.pathname.replace(/\/+$/, '');
-  } catch {
-    const s = String(b || '').replace(/[?#].*$/, '').replace(/\/+$/, '');
-    if (/^https?:\/\//i.test(s)) return s;
-    return location.origin + '/' + s.replace(/^\/+/, '');
-  }
-}
+    /* Утилиты путей */
+    function normalizeBase(b) {
+      try {
+        const hasScheme = /^[a-z]+:\/\//i.test(String(b));
+        const u = new URL(String(b), hasScheme ? undefined : (location.origin + '/'));
+        return u.origin + u.pathname.replace(/\/+$/, '');
+      } catch {
+        const s = String(b || '').replace(/[?#].*$/, '').replace(/\/+$/, '');
+        if (/^https?:\/\//i.test(s)) return s;
+        return location.origin + '/' + s.replace(/^\/+/, '');
+      }
+    }
 
-function absJoin(base, rel) {
-  try {
-    return new URL(String(rel || ''), normalizeBase(base) + '/').toString();
-  } catch {
-    const norm = normalizeBase(base);
-    return norm + '/' + String(rel || '').replace(/^\/+/, '');
-  }
-}
+    function absJoin(base, rel) {
+      try {
+        return new URL(String(rel || ''), normalizeBase(base) + '/').toString();
+      } catch {
+        const norm = normalizeBase(base);
+        return norm + '/' + String(rel || '').replace(/^\/+/, '');
+      }
+    }
 
-// Система уведомлений (без изменений)
-const NotificationSystem = {
-  queue: [], isShowing: false,
-  show(message, type = 'info', duration = 3000) { this.queue.push({ message, type, duration }); if (!this.isShowing) this.processQueue(); },
-  async processQueue() {
-    if (this.queue.length===0) { this.isShowing=false; return; }
-    this.isShowing=true;
-    const { message, type, duration } = this.queue.shift();
-    const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.innerHTML = `<div class="toast-content"><span class="toast-emoji" aria-hidden="true"></span><span class="toast-text">${message}</span></div>`;
-    document.body.appendChild(toast);
-    await new Promise(r=>setTimeout(r,50));
-    toast.classList.add('show');
-    await new Promise(r=>setTimeout(r,duration));
-    toast.classList.remove('show');
-    await new Promise(r=>setTimeout(r,300));
-    toast.remove();
-    this.processQueue();
-  },
-  info(msg){ this.show(msg,'info'); },
-  success(msg){ this.show(msg,'success'); },
-  error(msg){ this.show(msg,'error',5000); },
-  warning(msg){ this.show(msg,'warning',4000); },
-  offline(msg){ this.show(msg,'offline'); }
-};
+    /* Система уведомлений */
+    const NotificationSystem = {
+      queue: [], isShowing: false,
+      show(message, type = 'info', duration = 3000) { this.queue.push({ message, type, duration }); if (!this.isShowing) this.processQueue(); },
+      async processQueue() {
+        if (this.queue.length===0) { this.isShowing=false; return; }
+        this.isShowing=true;
+        const { message, type, duration } = this.queue.shift();
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        toast.innerHTML = `<div class="toast-content"><span class="toast-emoji" aria-hidden="true"></span><span class="toast-text">${message}</span></div>`;
+        document.body.appendChild(toast);
+        await new Promise(r=>setTimeout(r,50));
+        toast.classList.add('show');
+        await new Promise(r=>setTimeout(r,duration));
+        toast.classList.remove('show');
+        await new Promise(r=>setTimeout(r,300));
+        toast.remove();
+        this.processQueue();
+      },
+      info(msg) { this.show(msg, 'info'); },
+      success(msg) { this.show(msg, 'success'); },
+      error(msg) { this.show(msg, 'error', 5000); },
+      warning(msg) { this.show(msg, 'warning', 4000); },
+      offline(msg) { this.show(msg, 'offline'); }
+    };
 
-/* ====== Инициализация приложения ====== */
-function showMain() {
-  document.getElementById('promocode-block').classList.add('hidden');
-  document.getElementById('main-block').classList.remove('hidden');
-  initializeMainUi();
-}
+    /* ============== Загрузка данных ============== */
+    async function loadAlbumsIndex() {
+      const sel = document.getElementById('album-select');
+      try {
+        const r = await fetch('./albums.json', { cache:'no-cache' });
+        const j = await r.json();
+        albumsIndex = Array.isArray(j.albums) ? j.albums : [];
+        if (!albumsIndex.length) throw new Error('empty index');
+      } catch(e) {
+        albumsIndex = ALBUMS_FALLBACK.slice();
+      }
+      sel.innerHTML = albumsIndex.map(a => `<option value="${a.key}">${a.title}</option>`).join('');
+      const first = albumsIndex[0];
+      if (first) document.getElementById('promo-cover').src = absJoin(first.base, 'Cover.png');
+      buildAlbumIcons();
+      setActiveAlbumIcon(document.getElementById('album-select')?.value || albumsIndex[0]?.key || '');
+    }
 
-/* ====== Промокод ====== */
-function checkPromo() {
-  const inp = document.getElementById('promo-inp');
-  const err = document.getElementById('promo-error');
-  const val = (inp?.value || '').trim();
-  if (!val) { if (err) err.innerText = 'Введите промокод'; return; }
-  if (val.toUpperCase() === PROMO_CODE.toUpperCase()) {
-    localStorage.setItem('promoPassed', '1'); showMain();
-  } else {
-    if (err) err.innerText = 'Неверный промокод. Попробуйте ещё!';
-  }
-}
-document.getElementById('promo-inp').addEventListener('keydown', e => { if (e.key === 'Enter') checkPromo(); });
+    async function loadAlbumConfig(base) {
+      const resp = await fetch(absJoin(base, 'config.json'), { cache: 'no-cache' });
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+      (data.tracks || []).forEach(t => {
+        t.audio = absJoin(base, t.audio);
+        t.lyrics = absJoin(base, t.lyrics);
+        if (t.fulltext) t.fulltext = absJoin(base, t.fulltext);
+      });
+      return data;
+    }
 
-/* ====== Состояние плеера ====== */
-// Теперь все состояния управляются через globalState.
-// Функции для работы с избранным, как `getLiked`, `toggleLike`, остались без изменений, так как они работают с localStorage.
+    /* ============== Плеер и Государство ============== */
+    function togglePlayPause() {
+      const state = globalState.state;
+      const isPlaying = state.isPlaying;
+      
+      if (isPlaying) {
+        audioController.pause();
+        globalState.setState({ isPlaying: false });
+      } else {
+        const { playingAlbumKey, playingTrackIndex } = state;
+        const tracks = globalState.getTracksForAlbum(playingAlbumKey);
+        if (!playingAlbumKey || playingTrackIndex === -1 || !tracks) return;
+        
+        const trackUrl = tracks[playingTrackIndex].audio;
+        audioController.playTrack(trackUrl).then(() => {
+          globalState.setState({ isPlaying: true });
+        }).catch((error) => {
+          console.error('Не удалось воспроизвести трек', error);
+          NotificationSystem.error('Не удалось воспроизвести трек');
+        });
+      }
+    }
 
-/* ====== Плеер: Новые функции, использующие AudioController и GlobalState ====== */
+    async function nextTrack() {
+      const { playingAlbumKey, playingTrackIndex, shuffleMode, favoritesOnlyMode } = globalState.state;
+      const tracks = globalState.getTracksForAlbum(playingAlbumKey);
+      if (!tracks || playingTrackIndex === -1) return;
 
-function togglePlayPause() {
-  const isPlaying = globalState.state.isPlaying;
-  if (isPlaying) {
-    audioController.pause();
-    globalState.setState({ isPlaying: false });
-  } else {
-    // Получаем URL текущего трека из состояния
-    const { playingAlbumKey, playingTrackIndex } = globalState.state;
-    if (!playingAlbumKey || playingTrackIndex === -1) return;
-    
-    const meta = albumsIndex.find(a => a.key === playingAlbumKey);
-    if (!meta) return;
-    
-    const trackUrl = absJoin(normalizeBase(meta.base), config.tracks[playingTrackIndex].audio);
-    audioController.playTrack(trackUrl).then(() => {
-      globalState.setState({ isPlaying: true });
-    }).catch((error) => {
-      console.error('Не удалось воспроизвести трек', error);
-    });
-  }
-}
+      let nextIndex;
+      if (shuffleMode) {
+        nextIndex = globalState.getNextShuffledIndex(playingAlbumKey);
+      } else if (favoritesOnlyMode) {
+        const liked = globalState.getLikedTracks(playingAlbumKey);
+        const currentIndex = liked.indexOf(playingTrackIndex);
+        nextIndex = liked[(currentIndex + 1) % liked.length];
+      } else {
+        nextIndex = (playingTrackIndex + 1) % tracks.length;
+      }
+      
+      globalState.setState({ 
+        playingTrackIndex: nextIndex,
+        isPlaying: true 
+      });
+    }
 
-function nextTrack() {
-  // Логика получения следующего трека из глобального состояния
-  // ... (реализация зависит от shuffleMode и favoritesOnlyMode из globalState)
-  // После определения нового индекса трека:
-  // 1. Обновляем состояние: globalState.setState({ playingTrackIndex: newIndex });
-  // 2. Вызываем togglePlayPause() для воспроизведения нового трека.
-  NotificationSystem.info('nextTrack logic to be implemented');
-}
+    async function previousTrack() {
+      const { playingAlbumKey, playingTrackIndex, shuffleMode, favoritesOnlyMode } = globalState.state;
+      const tracks = globalState.getTracksForAlbum(playingAlbumKey);
+      if (!tracks || playingTrackIndex === -1) return;
 
-function previousTrack() {
-  NotificationSystem.info('previousTrack logic to be implemented');
-}
+      let prevIndex;
+      if (shuffleMode) {
+        prevIndex = globalState.getPrevShuffledIndex(playingAlbumKey);
+      } else if (favoritesOnlyMode) {
+        const liked = globalState.getLikedTracks(playingAlbumKey);
+        const currentIndex = liked.indexOf(playingTrackIndex);
+        prevIndex = liked[currentIndex > 0 ? currentIndex - 1 : liked.length - 1];
+      } else {
+        prevIndex = playingTrackIndex > 0 ? playingTrackIndex - 1 : tracks.length - 1;
+      }
+      
+      globalState.setState({ 
+        playingTrackIndex: prevIndex,
+        isPlaying: true 
+      });
+    }
 
-/* ====== Инициализация UI ====== */
-async function initializeMainUi() {
-  // Загрузка альбомов, инициализация Service Worker и т.д.
-  // Теперь при загрузке альбома мы обновляем состояние:
-  // globalState.setState({ albums: loadedAlbums, currentAlbumKey: firstKey });
-  NotificationSystem.info('App initialized with new architecture!');
-}
+    function stopPlayback() {
+      audioController.stop();
+      globalState.setState({ isPlaying: false });
+    }
 
-/* ====== Старт ====== */
-(function boot(){
-  if (localStorage.getItem('promoPassed') === '1') {
-    document.getElementById('promocode-block').classList.add('hidden');
-    document.getElementById('main-block').classList.remove('hidden');
-    initializeMainUi();
-  } else {
-    // Загрузить fallback альбомы для промо
-  }
-})();
-</script>
+    /* ============== Инициализация и Основной Цикл ============== */
+    async function initializeMainUi() {
+      await loadAlbumsIndex();
+      // ... остальная инициализация (SW, PWA и т.д.)
+    }
+
+    (function boot(){
+      if (localStorage.getItem('promoPassed') === '1') {
+        document.getElementById('promocode-block').classList.add('hidden');
+        document.getElementById('main-block').classList.remove('hidden');
+        initializeMainUi();
+      } else {
+        loadAlbumsIndex().catch(()=>{});
+      }
+    })();
+  </script>
 </body>
 </html>
