@@ -570,7 +570,7 @@
 
   <!-- Пустой контейнер под оффлайн модалки -->
   <div class="modal-bg" id="modal-offline"></div>
-
+<script>
   /* ====== Версия и настройки ====== */
   const VERSION = '8.0.1';
   const BUILD_DATE = '2025-11-03';
@@ -2882,12 +2882,19 @@ ${lines}
   /* Sleep */
   function toggleSleepMenu(){ const menu=document.getElementById('sleep-menu'); menu.classList.toggle('active'); if (menu.classList.contains('active')) setTimeout(()=>document.addEventListener('click', closeSleepMenu),100); }
   function closeSleepMenu(e){ if (e && e.target.closest('#sleep-timer-btn')) return; document.getElementById('sleep-menu').classList.remove('active'); document.removeEventListener('click', closeSleepMenu); }
-  function setSleepTimer(minutes){
+  function setSleepTimer(minutes) {
     closeSleepMenu();
-    if (minutes==='off'){ clearSleepTimer(); return; }
-    sleepTimerTarget = Date.now() + minutes*60*1000;
+    if (minutes === 'off') { 
+      clearSleepTimer(); 
+      return; 
+    }
+    sleepTimerTarget = Date.now() + minutes * 60 * 1000;
     updateSleepTimerUI();
-    if (sleepTimerInterval) clearInterval(s
+    if (sleepTimerInterval) clearInterval(sleepTimerInterval);
+    sleepTimerInterval = setInterval(checkSleepTimer, 1000);
+  }
+  </script>
+
   <script>
   /* ====== Таймер сна ====== */
   function updateSleepTimerUI() {
