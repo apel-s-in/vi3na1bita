@@ -1,6 +1,6 @@
 /**
  * AudioController.js
- * Единый глобальный контроллер для управления воспроизведением.
+ * Единый глобальный контроллер для управления воспроизведением. 
  * Решает проблемы: утечки памяти, дублирующиеся <audio> элементы, нестабильные события.
  */
 export class AudioController {
@@ -165,4 +165,5 @@ export class AudioController {
 }
 
 // Создаем и экспортируем единственный экземпляр (Singleton)
+
 export const audioController = new AudioController();
