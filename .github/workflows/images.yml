@@ -10,6 +10,9 @@ on:
       - '.github/workflows/images.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build-images:
     runs-on: ubuntu-latest
@@ -24,18 +27,16 @@ jobs:
 
       - name: Install deps
         run: |
-          npm --version
           npm init -y >/dev/null 2>&1 || true
           npm i -D sharp fast-glob
 
       - name: Generate WebP/AVIF and Thumbnails + Build gallery index.json
-        run: |
-          node scripts/build-gallery-index.mjs
+        run: node scripts/build-gallery-index.mjs
 
       - name: Commit changes
         uses: EndBug/add-and-commit@v9
         with:
           add: |
             albums/gallery
-          message: 'chore(gallery): update images (webp/avif/thumbs) and index.json'
+          message: 'chore(gallery): update images and index.json [skip ci]'
           default_author: github_actions
