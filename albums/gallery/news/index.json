@@ -1,6 +1,18 @@
 {
   "items": [
-    { "type": "html", "src": "news-01-baner.html" },
-    { "type": "img",  "src": "news-cover-02.png" }
+    {
+      "type": "html",
+      "src": "albums/gallery/news/news-01-baner.html"
+    },
+    {
+      "formats": {
+        "full": "albums/gallery/news/news-cover-02.png",
+        "webp": "albums/gallery/news/news-cover-02.webp",
+        "avif": "albums/gallery/news/news-cover-02.avif"
+      },
+      "width": 1024,
+      "height": 1024,
+      "size": 1650767
+    }
   ]
 }

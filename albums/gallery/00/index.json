@@ -1,6 +1,44 @@
 {
   "items": [
-    { "type": "img", "src": "00-cover-01.jpg" },
-    { "type": "img", "src": "00-cover-02.jpg" }
+    {
+      "formats": {
+        "full": "albums/gallery/00/00-cover-01.jpg",
+        "webp": "albums/gallery/00/00-cover-01.webp",
+        "avif": "albums/gallery/00/00-cover-01.avif"
+      },
+      "width": 800,
+      "height": 450,
+      "size": 243784
+    },
+    {
+      "formats": {
+        "full": "albums/gallery/00/00-cover-01.png",
+        "webp": "albums/gallery/00/00-cover-01.webp",
+        "avif": "albums/gallery/00/00-cover-01.avif"
+      },
+      "width": 800,
+      "height": 450,
+      "size": 3583883
+    },
+    {
+      "formats": {
+        "full": "albums/gallery/00/00-cover-02.jpg",
+        "webp": "albums/gallery/00/00-cover-02.webp",
+        "avif": "albums/gallery/00/00-cover-02.avif"
+      },
+      "width": 800,
+      "height": 450,
+      "size": 185673
+    },
+    {
+      "formats": {
+        "full": "albums/gallery/00/00-cover-02.png",
+        "webp": "albums/gallery/00/00-cover-02.webp",
+        "avif": "albums/gallery/00/00-cover-02.avif"
+      },
+      "width": 800,
+      "height": 450,
+      "size": 3331596
+    }
   ]
 }

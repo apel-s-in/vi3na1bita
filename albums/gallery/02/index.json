@@ -1,9 +1,84 @@
-
 {
   "items": [
-    { "type": "img", "src": "02-cover-01.jpg" },
-    { "type": "img", "src": "02-cover-02.jpg" },
-    { "type": "img", "src": "02-cover-03.jpg" },
-    { "type": "img", "src": "02-cover-04.jpg" }
+    {
+      "formats": {
+        "full": "albums/gallery/02/02-cover-01.jpg",
+        "webp": "albums/gallery/02/02-cover-01.webp",
+        "avif": "albums/gallery/02/02-cover-01.avif"
+      },
+      "width": 800,
+      "height": 800,
+      "size": 964292
+    },
+    {
+      "formats": {
+        "full": "albums/gallery/02/02-cover-01.png",
+        "webp": "albums/gallery/02/02-cover-01.webp",
+        "avif": "albums/gallery/02/02-cover-01.avif"
+      },
+      "width": 800,
+      "height": 800,
+      "size": 1313339
+    },
+    {
+      "formats": {
+        "full": "albums/gallery/02/02-cover-02.jpg",
+        "webp": "albums/gallery/02/02-cover-02.webp",
+        "avif": "albums/gallery/02/02-cover-02.avif"
+      },
+      "width": 800,
+      "height": 800,
+      "size": 972829
+    },
+    {
+      "formats": {
+        "full": "albums/gallery/02/02-cover-02.png",
+        "webp": "albums/gallery/02/02-cover-02.webp",
+        "avif": "albums/gallery/02/02-cover-02.avif"
+      },
+      "width": 800,
+      "height": 800,
+      "size": 1505022
+    },
+    {
+      "formats": {
+        "full": "albums/gallery/02/02-cover-03.jpg",
+        "webp": "albums/gallery/02/02-cover-03.webp",
+        "avif": "albums/gallery/02/02-cover-03.avif"
+      },
+      "width": 800,
+      "height": 800,
+      "size": 972829
+    },
+    {
+      "formats": {
+        "full": "albums/gallery/02/02-cover-03.png",
+        "webp": "albums/gallery/02/02-cover-03.webp",
+        "avif": "albums/gallery/02/02-cover-03.avif"
+      },
+      "width": 800,
+      "height": 800,
+      "size": 1488330
+    },
+    {
+      "formats": {
+        "full": "albums/gallery/02/02-cover-04.jpg",
+        "webp": "albums/gallery/02/02-cover-04.webp",
+        "avif": "albums/gallery/02/02-cover-04.avif"
+      },
+      "width": 800,
+      "height": 800,
+      "size": 972829
+    },
+    {
+      "formats": {
+        "full": "albums/gallery/02/02-cover-04.png",
+        "webp": "albums/gallery/02/02-cover-04.webp",
+        "avif": "albums/gallery/02/02-cover-04.avif"
+      },
+      "width": 800,
+      "height": 800,
+      "size": 1504981
+    }
   ]
 }
