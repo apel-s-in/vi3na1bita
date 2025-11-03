@@ -34,6 +34,12 @@ jobs:
           # Оптимизируем все PNG
           find . -type f -iname "*.png" -exec optipng -o7 -strip all {} \;
           
+      # Устанавливаем ImageMagick для создания превью
+      - name: Install ImageMagick
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+    
       # 4. Генерируем WebP версии для всех изображений в галереях
       - name: Generate WebP images
         run: |
