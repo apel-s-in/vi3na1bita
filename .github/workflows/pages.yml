@@ -2,7 +2,6 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [ main, master ]
   workflow_dispatch:
 
 permissions:
@@ -16,6 +15,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -39,10 +39,6 @@ jobs:
 
       - name: Add .nojekyll
         run: touch .nojekyll
-
-      - name: Cleanup dev files
-        run: |
-          rm -rf node_modules package.json package-lock.json
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
