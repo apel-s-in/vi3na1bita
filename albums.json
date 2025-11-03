@@ -2,13 +2,18 @@
   "albums": [
     {
       "key": "mezhdu-zlom-i-dobrom",
-      "title": "Между Злом и Добром",
+      "title": "Между Злом и Добром (2025)",
       "base": "https://apel-s-in.github.io/vi3na1bita-mezhdu-zlom-i-dobrom/"
     },
     {
       "key": "golos-dushi",
       "title": "Голос Души",
       "base": "https://apel-s-in.github.io/vi3na1bita-golos-dushi/"
+    },
+    {
+      "key": "odnazhdi-v-skazke",
+      "title": "Однажды в сказке",
+      "base": "https://apel-s-in.github.io/vi3na1bita-odnazhdi-v-skazke/"
     },
     {
       "key": "krevetochka",
