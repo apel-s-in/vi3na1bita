@@ -512,30 +512,25 @@
   </div>
   <!-- Пустой контейнер под оффлайн модалки -->
   <div class="modal-bg" id="modal-offline"></div>
-
-  <!-- Входная точка для нового JavaScript-кода -->
+  <!-- Новый JavaScript-код -->
   <script type="module">
+    /* ====== Импорт модулей ====== */
+    import { audioController } from './AudioController.js';
+    import { globalState } from './GlobalState.js';
+
     /* ====== Версия и настройки ====== */
     const VERSION = '8.0.1';
     const BUILD_DATE = '2025-11-02';
     const PROMO_CODE = 'VITRINA2025';
 
-    /* ====== Список альбомов: fallback ====== */
-    const ALBUMS_FALLBACK = [
-      { key: 'mezhdu-zlom-i-dobrom', title: 'Между Злом и Добром (2025)', base: 'https://apel-s-in.github.io/vi3na1bita-mezhdu-zlom-i-dobrom/' },
-      { key: 'golos-dushi',          title: 'Голос Души',                base: 'https://apel-s-in.github.io/vi3na1bita-golos-dushi/' },
-      { key: 'odnazhdi-v-skazke',    title: 'Однажды в сказке',          base: 'https://apel-s-in.github.io/vi3na1bita-odnazhdi-v-skazke/' },
-      { key: 'krevetochka',          title: 'КРЕВЕцTOCHKA',             base: 'https://apel-s-in.github.io/krevetochka/' }
-    ];
-
-    /* Импорт необходимых модулей */
-    import { audioController } from './AudioController.js';
-    import { globalState } from './GlobalState.js';
-
-    /* Глобальный хранилище данных, не связанное с состоянием воспроизведения */
+    /* ====== Глобальные данные ====== */
+    const SPECIAL_FAVORITES_KEY = '__favorites__';
+    const SPECIAL_RELIZ_KEY = '__reliz__';
     let albumsIndex = [];
     let albumBase = '';
     let config = null;
+    let currentAlbumKey = null;
+    let viewMode = 'album';
 
     /* Утилиты путей */
     function normalizeBase(b) {
@@ -564,18 +559,18 @@
       queue: [], isShowing: false,
       show(message, type = 'info', duration = 3000) { this.queue.push({ message, type, duration }); if (!this.isShowing) this.processQueue(); },
       async processQueue() {
-        if (this.queue.length===0) { this.isShowing=false; return; }
-        this.isShowing=true;
+        if (this.queue.length === 0) { this.isShowing = false; return; }
+        this.isShowing = true;
         const { message, type, duration } = this.queue.shift();
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
         toast.innerHTML = `<div class="toast-content"><span class="toast-emoji" aria-hidden="true"></span><span class="toast-text">${message}</span></div>`;
         document.body.appendChild(toast);
-        await new Promise(r=>setTimeout(r,50));
+        await new Promise(r => setTimeout(r, 50));
         toast.classList.add('show');
-        await new Promise(r=>setTimeout(r,duration));
+        await new Promise(r => setTimeout(r, duration));
         toast.classList.remove('show');
-        await new Promise(r=>setTimeout(r,300));
+        await new Promise(r => setTimeout(r, 300));
         toast.remove();
         this.processQueue();
       },
@@ -590,18 +585,22 @@
     async function loadAlbumsIndex() {
       const sel = document.getElementById('album-select');
       try {
-        const r = await fetch('./albums.json', { cache:'no-cache' });
+        const r = await fetch('./albums.json', { cache: 'no-cache' });
         const j = await r.json();
         albumsIndex = Array.isArray(j.albums) ? j.albums : [];
         if (!albumsIndex.length) throw new Error('empty index');
-      } catch(e) {
-        albumsIndex = ALBUMS_FALLBACK.slice();
+      } catch (e) {
+        albumsIndex = [
+          { key: 'mezhdu-zlom-i-dobrom', title: 'Между Злом и Добром (2025)', base: 'https://apel-s-in.github.io/vi3na1bita-mezhdu-zlom-i-dobrom/' },
+          { key: 'golos-dushi', title: 'Голос Души', base: 'https://apel-s-in.github.io/vi3na1bita-golos-dushi/' },
+          { key: 'krevetochka', title: 'КРЕВЕцTOCHKA', base: 'https://apel-s-in.github.io/krevetochka/' }
+        ];
       }
       sel.innerHTML = albumsIndex.map(a => `<option value="${a.key}">${a.title}</option>`).join('');
       const first = albumsIndex[0];
       if (first) document.getElementById('promo-cover').src = absJoin(first.base, 'Cover.png');
       buildAlbumIcons();
-      setActiveAlbumIcon(document.getElementById('album-select')?.value || albumsIndex[0]?.key || '');
+      setActiveAlbumIcon(albumsIndex[0]?.key || '');
     }
 
     async function loadAlbumConfig(base) {
@@ -620,66 +619,53 @@
     function togglePlayPause() {
       const state = globalState.state;
       const isPlaying = state.isPlaying;
-      
+
       if (isPlaying) {
         audioController.pause();
         globalState.setState({ isPlaying: false });
       } else {
         const { playingAlbumKey, playingTrackIndex } = state;
-        const tracks = globalState.getTracksForAlbum(playingAlbumKey);
-        if (!playingAlbumKey || playingTrackIndex === -1 || !tracks) return;
-        
-        const trackUrl = tracks[playingTrackIndex].audio;
-        audioController.playTrack(trackUrl).then(() => {
-          globalState.setState({ isPlaying: true });
+        if (!playingAlbumKey || playingTrackIndex === -1) return;
+
+        // Находим альбом по ключу
+        const albumMeta = albumsIndex.find(a => a.key === playingAlbumKey);
+        if (!albumMeta) return;
+
+        // Загружаем конфиг альбома, если нужно
+        loadAlbumConfig(albumMeta.base).then(albumConfig => {
+          const trackUrl = albumConfig.tracks[playingTrackIndex].audio;
+          audioController.playTrack(trackUrl).then(() => {
+            globalState.setState({ isPlaying: true });
+          }).catch((error) => {
+            console.error('Не удалось воспроизвести трек', error);
+            NotificationSystem.error('Не удалось воспроизвести трек');
+          });
         }).catch((error) => {
-          console.error('Не удалось воспроизвести трек', error);
-          NotificationSystem.error('Не удалось воспроизвести трек');
+          console.error('Не удалось загрузить конфиг альбома', error);
+          NotificationSystem.error('Не удалось загрузить альбом');
         });
       }
     }
 
-    async function nextTrack() {
-      const { playingAlbumKey, playingTrackIndex, shuffleMode, favoritesOnlyMode } = globalState.state;
-      const tracks = globalState.getTracksForAlbum(playingAlbumKey);
-      if (!tracks || playingTrackIndex === -1) return;
+    function nextTrack() {
+      const { playingAlbumKey, playingTrackIndex } = globalState.state;
+      if (!playingAlbumKey || playingTrackIndex === -1) return;
 
-      let nextIndex;
-      if (shuffleMode) {
-        nextIndex = globalState.getNextShuffledIndex(playingAlbumKey);
-      } else if (favoritesOnlyMode) {
-        const liked = globalState.getLikedTracks(playingAlbumKey);
-        const currentIndex = liked.indexOf(playingTrackIndex);
-        nextIndex = liked[(currentIndex + 1) % liked.length];
-      } else {
-        nextIndex = (playingTrackIndex + 1) % tracks.length;
-      }
-      
-      globalState.setState({ 
-        playingTrackIndex: nextIndex,
-        isPlaying: true 
+      loadAlbumConfig(albumsIndex.find(a => a.key === playingAlbumKey).base).then(albumConfig => {
+        let nextIndex = (playingTrackIndex + 1) % albumConfig.tracks.length;
+        globalState.setState({ playingTrackIndex: nextIndex });
+        togglePlayPause(); // Запустит новый трек
       });
     }
 
-    async function previousTrack() {
-      const { playingAlbumKey, playingTrackIndex, shuffleMode, favoritesOnlyMode } = globalState.state;
-      const tracks = globalState.getTracksForAlbum(playingAlbumKey);
-      if (!tracks || playingTrackIndex === -1) return;
+    function previousTrack() {
+      const { playingAlbumKey, playingTrackIndex } = globalState.state;
+      if (!playingAlbumKey || playingTrackIndex === -1) return;
 
-      let prevIndex;
-      if (shuffleMode) {
-        prevIndex = globalState.getPrevShuffledIndex(playingAlbumKey);
-      } else if (favoritesOnlyMode) {
-        const liked = globalState.getLikedTracks(playingAlbumKey);
-        const currentIndex = liked.indexOf(playingTrackIndex);
-        prevIndex = liked[currentIndex > 0 ? currentIndex - 1 : liked.length - 1];
-      } else {
-        prevIndex = playingTrackIndex > 0 ? playingTrackIndex - 1 : tracks.length - 1;
-      }
-      
-      globalState.setState({ 
-        playingTrackIndex: prevIndex,
-        isPlaying: true 
+      loadAlbumConfig(albumsIndex.find(a => a.key === playingAlbumKey).base).then(albumConfig => {
+        let prevIndex = playingTrackIndex > 0 ? playingTrackIndex - 1 : albumConfig.tracks.length - 1;
+        globalState.setState({ playingTrackIndex: prevIndex });
+        togglePlayPause(); // Запустит новый трек
       });
     }
 
@@ -691,16 +677,72 @@
     /* ============== Инициализация и Основной Цикл ============== */
     async function initializeMainUi() {
       await loadAlbumsIndex();
-      // ... остальная инициализация (SW, PWA и т.д.)
+      const firstAlbumKey = albumsIndex[0]?.key;
+      if (firstAlbumKey) {
+        currentAlbumKey = firstAlbumKey;
+        globalState.setState({ currentAlbumKey, playingAlbumKey: firstAlbumKey, playingTrackIndex: 0 });
+        const sel = document.getElementById('album-select');
+        sel.value = firstAlbumKey;
+        loadAlbumConfig(albumsIndex[0].base).then(cfg => {
+          config = cfg;
+          renderTrackList();
+        });
+      }
+
+      // Устанавливаем обработчики событий для кнопок плеера
+      document.getElementById('play-pause-icon')?.addEventListener('click', togglePlayPause);
+      // ... (аналогично для nextTrack, previousTrack и других кнопок)
+
+      // Подписываем UI на изменения состояния
+      globalState.subscribe((state) => {
+        // Обновляем кнопку воспроизведения
+        const playPauseIcon = document.getElementById('play-pause-icon');
+        if (playPauseIcon) {
+          playPauseIcon.innerHTML = state.isPlaying ? '<path d="M6 6h4v12H6zM14 6h4v12h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
+        }
+        // Обновляем трек-лист (если нужно)
+        if (state.currentAlbumKey !== currentAlbumKey) {
+          currentAlbumKey = state.currentAlbumKey;
+          const album = albumsIndex.find(a => a.key === currentAlbumKey);
+          if (album) {
+            loadAlbumConfig(album.base).then(cfg => {
+              config = cfg;
+              renderTrackList();
+            });
+          }
+        }
+      });
     }
 
-    (function boot(){
+    function renderTrackList() {
+      const list = document.getElementById('track-list');
+      if (!config) { list.innerHTML = ''; return; }
+      let html = '';
+      for (let i = 0; i < config.tracks.length; i++) {
+        const t = config.tracks[i];
+        const isCurrent = (globalState.state.playingTrackIndex === i && globalState.state.playingAlbumKey === currentAlbumKey);
+        html += `<div class="track${isCurrent ? ' current' : ''}" onclick="handleTrackClick(${i})">
+          <span class="tnum">${String(i + 1).padStart(2, '0')}.</span>
+          <span class="track-title">${t.title}</span>
+          <img src="img/star2.png" class="like-star" alt="звезда">
+        </div>`;
+      }
+      list.innerHTML = html;
+    }
+
+    function handleTrackClick(index) {
+      globalState.setState({ playingAlbumKey: currentAlbumKey, playingTrackIndex: index });
+      togglePlayPause();
+    }
+
+    /* ============== Старт приложения ============== */
+    (function boot() {
       if (localStorage.getItem('promoPassed') === '1') {
         document.getElementById('promocode-block').classList.add('hidden');
         document.getElementById('main-block').classList.remove('hidden');
         initializeMainUi();
       } else {
-        loadAlbumsIndex().catch(()=>{});
+        loadAlbumsIndex().catch(() => { });
       }
     })();
   </script>
