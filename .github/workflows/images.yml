@@ -1,0 +1,41 @@
+name: Optimize Images and Build Gallery Index
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'albums/gallery/**'
+      - 'img/**'
+      - 'scripts/**'
+      - '.github/workflows/images.yml'
+  workflow_dispatch:
+
+jobs:
+  build-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: |
+          npm --version
+          npm init -y >/dev/null 2>&1 || true
+          npm i -D sharp fast-glob
+
+      - name: Generate WebP/AVIF and Thumbnails + Build gallery index.json
+        run: |
+          node scripts/build-gallery-index.mjs
+
+      - name: Commit changes
+        uses: EndBug/add-and-commit@v9
+        with:
+          add: |
+            albums/gallery
+          message: 'chore(gallery): update images (webp/avif/thumbs) and index.json'
+          default_author: github_actions
