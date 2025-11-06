@@ -1,5 +1,11 @@
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
+
+// Локальная синхронная проверка существования файла
+function existsSyncSafely(p) {
+  try { fsSync.accessSync(p); return true; } catch { return false; }
+}
 
 // Базовая директория галерей
 const GALLERY_BASE = './albums/gallery';
