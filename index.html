@@ -625,6 +625,10 @@
     '__favorites__': 'stars',
     '__reliz__': 'news'
   };
+  // Разрешённые id центральных галерей (существуют папки only: 00,01,02,news,stars)
+  const CENTRAL_ALLOWED_IDS = new Set(['00', '01', '02', 'news', 'stars']);
+  // Какие альбомы реально опубликованы (для warmup). Исключаем «Однажды в сказке».
+  const PUBLISHED_ALBUM_KEYS = new Set(['golos-dushi', 'mezhdu-zlom-i-dobrom', 'krevetochka']);
 
   let coverGalleryArr = [];
   let coverGalleryIdx = 0;
@@ -659,9 +663,16 @@
     } catch { return null; }
   }
   function centralIdForAlbumKey(albumKey) {
-    if (CENTRAL_GALLERY_OVERRIDES[albumKey]) return CENTRAL_GALLERY_OVERRIDES[albumKey];
-    return albumOrderIndexStr(albumKey);
+    // Явные переопределения (krevetochka/news/stars)
+    if (CENTRAL_GALLERY_OVERRIDES[albumKey]) {
+      const id = CENTRAL_GALLERY_OVERRIDES[albumKey];
+      return CENTRAL_ALLOWED_IDS.has(id) ? id : null;
+    }
+    // Позиция в albums.json → "01","02",... но только если такая папка реально существует
+    const idByOrder = albumOrderIndexStr(albumKey);
+    return CENTRAL_ALLOWED_IDS.has(idByOrder) ? idByOrder : null;
   }
+
   function parseAspectFromFileName(url) {
     try {
       const name = url.split('?')[0].split('#')[0].split('/').pop();
@@ -1014,6 +1025,16 @@
     const meta = albumByKey(key);
     if (!meta) { NotificationSystem.error('Альбом не найден'); return; }
 
+    // Если нажали на уже активный альбом в обычном режиме — просто переключаем видимость галереи
+    if (viewMode === 'album' && key === currentAlbumKey) {
+      __currentGalleryVisible = !__currentGalleryVisible;
+      setCoverWrapVisible(__currentGalleryVisible);
+      setActiveAlbumIcon(key);
+      setAlbumHeaderTitle(key);
+      return;
+    }
+
+    // Переход в альбом
     applyRelizUiMode(false);
     viewMode = 'album';
     clearRelizView();
@@ -1022,6 +1043,8 @@
 
     const sel = document.getElementById('album-select'); if (sel) sel.value = key;
     setActiveAlbumIcon(key);
+
+    // По умолчанию заходим с открытой галереей
     __currentGalleryVisible = true;
     setCoverWrapVisible(true);
 
@@ -1236,14 +1259,20 @@
       const list = (albumsIndex || []).map(a => a.key);
       const pos = list.indexOf(currentKey);
       const neigh = [list[pos - 1], list[pos + 1]].filter(Boolean);
+
       for (const key of neigh) {
+        // Пропускаем не опубликованные альбомы, чтобы не получать 404 в консоли
+        if (!PUBLISHED_ALBUM_KEYS.has(key)) continue;
+
         if (albumConfigCache[key]?.config) continue;
         const meta = albumByKey(key);
         if (!meta) continue;
         const base = normalizeBase(meta.base);
+
+        // Конфиг альбома (best-effort, без шумных ошибок)
         try {
           const r = await fetch(absJoin(base, 'config.json'), { cache: 'force-cache' });
-          if (r.ok) {
+          if (r && r.ok) {
             const data = await r.json();
             (data.tracks || []).forEach(t => {
               t.audio = absJoin(base, t.audio);
@@ -1253,6 +1282,8 @@
             albumConfigCache[key] = { base, config: data };
           }
         } catch {}
+
+        // Центральная галерея — только если id входит в белый список
         try {
           const cid = centralIdForAlbumKey(key);
           if (cid) fetch(`${CENTRAL_GALLERY_BASE}${cid}/index.json`).catch(()=>{});
