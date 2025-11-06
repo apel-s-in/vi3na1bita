@@ -1,0 +1,40 @@
+name: Generate .meta context
+
+on:
+  push:
+    branches: [ main, master ]
+    # не перезапускать воркфлоу от собственных коммитов, меняющих только .meta
+    paths-ignore:
+      - '.meta/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate .meta
+        run: |
+          node generate-context.js --mode=both --max-lines=20000
+          ls -la .meta || true
+
+      - name: Commit .meta
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "CI: generate .meta context"
+          branch: ${{ github.ref_name }}
+          file_pattern: ".meta/**"
+          commit_user_name: github-actions[bot]
+          commit_user_email: github-actions[bot]@users.noreply.github.com
