@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-f2d4eaf111c0a1f7519f4076b171248fc31cac26.idx
-│   │       ├── pack-f2d4eaf111c0a1f7519f4076b171248fc31cac26.pack
-│   │       └── pack-f2d4eaf111c0a1f7519f4076b171248fc31cac26.rev
+│   │       ├── pack-cc776424ea382ead93350cd411cff5dc34691892.idx
+│   │       ├── pack-cc776424ea382ead93350cd411cff5dc34691892.pack
+│   │       └── pack-cc776424ea382ead93350cd411cff5dc34691892.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -261,7 +261,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 19:31:07 UTC
+Сгенерировано: 2025-11-06 19:46:16 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1320,6 +1320,8 @@ generateIndex();
     .track { display: flex; align-items: center; padding: 7px 8px; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.13s; background: none; }
     .track:hover { background: rgba(255,255,255,0.05); }
     .track.current { background: #232b38; }
+    /* Неактивная строка в «Избранном» (звезда снята) */
+    #track-list .track.inactive { opacity: 0.45; filter: grayscale(0.6); }
     /* Мини‑строка под мини‑плеер (когда листаем другой альбом) */
     .mini-now {
       display:flex; align-items:center; gap:8px;
@@ -2092,11 +2094,35 @@ generateIndex();
           }
         }
       }
-      setQuickCoverSrc(absJoin(meta.base, 'Cover.png'));
+      setQuickCoverSrc('img/logo.png');
       showGalleryNav();
     } catch {
       setQuickCoverSrc('img/logo.png');
       showGalleryNav();
+    }
+  }
+
+  // Фон страницы: первый кадр локальной галереи альбома (или логотип)
+  async function applyAlbumBackgroundFromGallery(albumKey) {
+    try {
+      const id = centralIdForAlbumKey(albumKey);
+      if (!id) { document.body.style.background = '#181818'; return; }
+      const baseDir = `${CENTRAL_GALLERY_BASE}${id}/`;
+      const r = await fetch(baseDir + 'index.json', { cache: 'no-cache' });
+      if (!r.ok) { document.body.style.background = '#181818'; return; }
+      const j = await r.json();
+      const first = Array.isArray(j.items) ? j.items[0] : (Array.isArray(j) ? j[0] : null);
+      if (first) {
+        const norm = normalizeGalleryItem(first, baseDir);
+        if (norm && norm.type === 'img') {
+          const src = norm.formats?.full || norm.src || 'img/logo.png';
+          document.body.style.background = `url(${src}) center/cover fixed #111`;
+          return;
+        }
+      }
+      document.body.style.background = '#181818';
+    } catch {
+      document.body.style.background = '#181818';
     }
   }
   </script>
@@ -2289,7 +2315,7 @@ generateIndex();
     sel.innerHTML = albumsIndex.map(a => `<option value="${a.key}">${a.title}</option>`).join('');
 
     const first = albumsIndex[0];
-    if (first) document.getElementById('promo-cover').src = absJoin(first.base, 'Cover.png');
+    if (first) document.getElementById('promo-cover').src = 'img/logo.png';
 
     buildAlbumIcons();
     setActiveAlbumIcon(document.getElementById('album-select')?.value || albumsIndex[0]?.key || '');
@@ -2326,7 +2352,7 @@ generateIndex();
         if (Array.isArray(gal) && gal.length) {
           coverGalleryArr = gal;
         } else {
-          coverGalleryArr = [{ type:'img', src: absJoin(base,'Cover.png'), formats: { full: absJoin(base,'Cover.png') }, ar: 1 }];
+          coverGalleryArr = [{ type:'img', src: 'img/logo.png', formats: { full: 'img/logo.png' }, ar: 1 }];
         }
         coverGalleryIdx = 0;
         setCoverImage(0);
@@ -2353,14 +2379,14 @@ generateIndex();
         const gal = await buildCoverGalleryList(currentAlbumKey, base, signal);
         if (signal.aborted) return;
         coverGalleryArr = (Array.isArray(gal) && gal.length) ? gal
-                          : [{ type:'img', src: absJoin(base,'Cover.png'), formats: { full: absJoin(base,'Cover.png') }, ar: 1 }];
+                          : [{ type:'img', src: 'img/logo.png', formats: { full: 'img/logo.png' }, ar: 1 }];
         coverGalleryIdx = 0;
         setCoverImage(0);
         showGalleryNav();
         if (!galleryRotationStarted) setTimeout(() => { if (!signal.aborted) startCoverAutoPlay(); }, 5000);
       } catch {
         if (signal.aborted) return;
-        coverGalleryArr = [{ type:'img', src: absJoin(base,'Cover.png'), formats: { full: absJoin(base,'Cover.png') }, ar: 1 }];
+        coverGalleryArr = [{ type:'img', src: 'img/logo.png', formats: { full: 'img/logo.png' }, ar: 1 }];
         coverGalleryIdx = 0;
         setCoverImage(0); showGalleryNav();
         if (!galleryRotationStarted) setTimeout(() => { if (!signal.aborted) startCoverAutoPlay(); }, 5000);
@@ -2385,21 +2411,19 @@ generateIndex();
 
   async function applyAlbumConfig(base, data, { skipCovers = false, signal } = {}) {
     try {
-      if (data.background) {
-        document.body.style.background = `url(${absJoin(base, data.background)}) center/cover fixed #111`;
-      } else {
-        document.body.style.background = `#181818`;
-      }
-    } catch {}
+      await applyAlbumBackgroundFromGallery(currentAlbumKey);
+    } catch {
+      document.body.style.background = `#181818`;
+    }
 
     config = data;
 
     if (!skipCovers) {
       try {
         const gal = await buildCoverGalleryList(currentAlbumKey, base, signal);
-        coverGalleryArr = (Array.isArray(gal) && gal.length) ? gal : [{ type:'img', src: absJoin(base,'Cover.png'), formats:{full:absJoin(base,'Cover.png')}, ar:1 }];
+        coverGalleryArr = (Array.isArray(gal) && gal.length) ? gal : [{ type:'img', src: 'img/logo.png', formats:{full:'img/logo.png'}, ar:1 }];
       } catch {
-        coverGalleryArr = [{ type:'img', src: absJoin(base,'Cover.png'), formats:{full:absJoin(base,'Cover.png')}, ar:1 }];
+        coverGalleryArr = [{ type:'img', src: 'img/logo.png', formats:{full:'img/logo.png'}, ar:1 }];
       }
       if (!signal?.aborted) {
         coverGalleryIdx = 0; setCoverImage(coverGalleryIdx);
@@ -4119,6 +4143,30 @@ generateIndex();
 
   function loadJSZip(){ if (window.JSZip) return Promise.resolve(); return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
 
+  // Собираем файлы галереи текущего альбома из локального репозитория
+  async function gatherGalleryFilesForAlbum(albumKey) {
+    const id = centralIdForAlbumKey(albumKey);
+    if (!id) return [];
+    try {
+      const baseDir = `${CENTRAL_GALLERY_BASE}${id}/`;
+      const r = await fetch(baseDir + 'index.json', { cache: 'no-cache' });
+      if (!r.ok) return [];
+      const j = await r.json();
+      const arr = Array.isArray(j.items) ? j.items : (Array.isArray(j) ? j : []);
+      const files = [];
+      for (const raw of arr) {
+        const norm = normalizeGalleryItem(raw, baseDir);
+        if (!norm || norm.type !== 'img') continue;
+        const src = norm.formats?.full || norm.src;
+        if (src) {
+          const name = src.split('/').pop();
+          files.push({ url: src, name: `gallery/${name}`, type: 'image' });
+        }
+      }
+      return files;
+    } catch { return []; }
+  }
+
   async function prepareFilesList(){
     filesToDownload=[]; const added = new Set();
     const liked = getLiked();
@@ -4137,10 +4185,15 @@ generateIndex();
       }
     }
     if (document.getElementById('includeCovers').checked){
-      ['Cover.png','Cover01.png','Cover02.png','Cover03.png'].forEach(c=>{
-        const url = absJoin(albumBase, c); const nm = c;
-        if (!added.has(nm)){ added.add(nm); filesToDownload.push({url, name:nm, type:'image'}); }
-      });
+      const galleryFiles = await gatherGalleryFilesForAlbum(currentAlbumKey);
+      for (const f of galleryFiles) {
+        if (!added.has(f.name)){ added.add(f.name); filesToDownload.push(f); }
+      }
+      // На всякий случай — если галерея пуста, положим логотип
+      if (galleryFiles.length === 0) {
+        const nm = 'logo.png';
+        if (!added.has(nm)){ added.add(nm); filesToDownload.push({ url: 'img/logo.png', name: nm, type: 'image' }); }
+      }
     }
     if (!added.has('logo.png')) filesToDownload.push({url:'img/logo.png', name:'logo.png', type:'image'});
     if (!added.has('social.txt')) filesToDownload.push({content: generateSocialText(), name:'social.txt', type:'text'});
@@ -6186,6 +6239,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19147321706
-Time: 2025-11-06 19:25:40 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19147488781
+Time: 2025-11-06 19:31:46 UTC
 
