@@ -22,7 +22,6 @@ const CORE_ASSETS = [
   './img/logo.png',
   './img/star.png',
   './img/star2.png',
-  './icons/favicon.svg',
   './icons/favicon-16.png',
   './icons/favicon-32.png',
   './icons/apple-touch-icon.png'
