@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-cc776424ea382ead93350cd411cff5dc34691892.idx
-│   │       ├── pack-cc776424ea382ead93350cd411cff5dc34691892.pack
-│   │       └── pack-cc776424ea382ead93350cd411cff5dc34691892.rev
+│   │       ├── pack-3e5a0ebf49dbfbd1a9c86cef6769351306880439.idx
+│   │       ├── pack-3e5a0ebf49dbfbd1a9c86cef6769351306880439.pack
+│   │       └── pack-3e5a0ebf49dbfbd1a9c86cef6769351306880439.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -261,7 +261,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 19:46:17 UTC
+Сгенерировано: 2025-11-06 19:47:14 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -6213,7 +6213,7 @@ try { main(); } catch (e) { console.error("❌", e); process.exit(1); }
       "title": "Новый релиз — Между Злом и Добром",
       "date": "2025-11-01",
       "text": "Доступен новый альбом. Слушайте онлайн и офлайн в нашем приложении.",
-      "image": "./img/release-cover.jpg",
+      "image": "img/logo.png",
       "tags": ["релиз", "альбом"]
     },
     {
