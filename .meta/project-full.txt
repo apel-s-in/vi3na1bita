@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-2025ea5193e2b5d9a1a7c193eb1ce76b22b71d46.idx
-│   │       ├── pack-2025ea5193e2b5d9a1a7c193eb1ce76b22b71d46.pack
-│   │       └── pack-2025ea5193e2b5d9a1a7c193eb1ce76b22b71d46.rev
+│   │       ├── pack-82727a6520305e4cbfbbe80156a97928fbd607d7.idx
+│   │       ├── pack-82727a6520305e4cbfbbe80156a97928fbd607d7.pack
+│   │       └── pack-82727a6520305e4cbfbbe80156a97928fbd607d7.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -162,6 +162,32 @@ vi3na1bita/
 │           ├── news-cover-02.png
 │           └── news-cover-02.webp
 ├── assets/
+│   └── emoji/
+│       └── noto/
+│           ├── animated/
+│           │   ├── cross_mark.json
+│           │   ├── loudspeaker.json
+│           │   ├── satellite_antenna.json
+│           │   ├── sparkles.json
+│           │   ├── trophy.json
+│           │   ├── warning.json
+│           │   └── white_check_mark.json
+│           ├── fallback/
+│           │   ├── cross_mark.webp
+│           │   ├── loudspeaker.webp
+│           │   ├── satellite_antenna.webp
+│           │   ├── sparkles.webp
+│           │   ├── trophy.webp
+│           │   ├── warning.webp
+│           │   └── white_check_mark.webp
+│           └── static/
+│               ├── cross_mark.png
+│               ├── loudspeaker.png
+│               ├── satellite_antenna.png
+│               ├── sparkles.png
+│               ├── trophy.png
+│               ├── warning.png
+│               └── white_check_mark.png
 ├── icons/
 │   ├── apple-touch-icon.png
 │   ├── favicon-16.png
@@ -236,7 +262,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 15:37:05 UTC
+Сгенерировано: 2025-11-06 15:56:01 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -5501,55 +5527,70 @@ async function validateGallery() {
 "use strict";
 
 /**
- * Генератор .meta/project-full.txt и .meta/project-adaptive.txt
- * Структура:
- * 1) ПРАВИЛА ДЛЯ НЕЙРОСЕТЕЙ
- * 2) МЕТА: имя/URL репозитория, «проект делается средствами GitHub»
- * 3) СТРУКТУРА ПРОЕКТА — полное дерево (НО исключаем .git/**, .meta/**, assets/**)
- * 4) ФАЙЛЫ — только текстовые (html/js/ts/css/json/yml/md/…), по приоритету. Каждый:
- *    //=================================================
- *    // FILE: /путь
- *    <полный код без сокращений>
+ * generate-context.js
  *
- * ВАЖНО: нет блока «Критичные логи». НИКОГДА не включаем сами project-full.txt/adaptive.txt.
+ * Генератор .meta/project-full.txt и .meta/project-adaptive.txt
+ * Требования (выполнены):
+ * 1) В начале — блок «ПРАВИЛА ДЛЯ НЕЙРОСЕТЕЙ», затем мета‑блок с названием/URL репозитория и пометкой про GitHub.
+ * 2) СТРУКТУРА ПРОЕКТА — ПОЛНОЕ дерево ВСЕХ файлов (включая assets/), но без .git/** и .meta/**.
+ *    Дополнительно защищаемся от самовключения результирующих файлов.
+ * 3) После дерева — секция «ФАЙЛЫ»: только текстовые файлы, по приоритетам (critical → high → medium → low),
+ *    каждый файл выводится целиком. Здесь assets/** исключаем (по вашему требованию), .meta/** тоже исключаем.
+ * 4) НЕТ блока «Критичные логи».
+ * 5) Adaptive-режим ограничивает общий объём строк параметром --max-lines (по умолчанию 20000).
  *
  * Запуск:
  *   node generate-context.js --mode=both --max-lines=20000
+ *   node generate-context.js --mode=full
+ *   node generate-context.js --mode=adaptive --out-dir=.meta
+ *
+ * Аргументы:
+ *   --mode=both|full|adaptive
+ *   --max-lines=ЧИСЛО           // только для adaptive
+ *   --out-dir=ПУТЬ              // по умолчанию .meta
+ *   --root=ПУТЬ                 // корень проекта (по умолчанию текущая папка)
  */
 
 const fs = require("fs");
 const path = require("path");
 
-// CLI
+// -------------------- CLI --------------------
 const argv = Object.fromEntries(
   process.argv.slice(2).map(a => {
-    const [k, ...r] = a.replace(/^--/,"").split("=");
+    const [k, ...r] = a.replace(/^--/, "").split("=");
     return [k, r.join("=") === "" ? true : r.join("=")];
   })
 );
 
-const ROOT = path.resolve(argv.root || __dirname);
+const ROOT     = path.resolve(argv.root || __dirname);
 const META_DIR = path.resolve(argv["out-dir"] || path.join(ROOT, ".meta"));
-const MODE = (argv.mode || "both").toLowerCase(); // full | adaptive | both
+const MODE     = (argv.mode || "both").toLowerCase(); // full | adaptive | both
 const MAX_LINES = Number(argv["max-lines"] || 20000);
 
+// Гарантируем наличие .meta
 if (!fs.existsSync(META_DIR)) fs.mkdirSync(META_DIR, { recursive: true });
-const FULL_FILE = path.join(META_DIR, "project-full.txt");
-const ADAPTIVE_FILE = path.join(META_DIR, "project-adaptive.txt");
 
-// Относительные пути к self-файлам (для дополнительной страховки)
-const SELF_FULL_REL = toUnix(path.relative(ROOT, FULL_FILE));
+const FULL_FILE    = path.join(META_DIR, "project-full.txt");
+const ADAPTIVE_FILE= path.join(META_DIR, "project-adaptive.txt");
+
+// Относительные пути к self-файлам (для защиты от самовключения)
+const SELF_FULL_REL  = toUnix(path.relative(ROOT, FULL_FILE));
 const SELF_ADAPT_REL = toUnix(path.relative(ROOT, ADAPTIVE_FILE));
 
-// Текстовые расширения, код которых включаем в «ФАЙЛЫ»
+// -------------------- Настройки --------------------
+
+// Текстовые расширения, содержимое которых включаем в секцию «ФАЙЛЫ»
 const TEXT_EXTS = new Set([
   ".html",".htm",".css",".js",".mjs",".cjs",".ts",".tsx",
   ".json",".webmanifest",".md",".txt",".yml",".yaml"
 ]);
 
-// Исключения для дерева и списка файлов.
-// По требованию исключаем .meta/** и assets/** (и служебные).
-const EXCLUDE_PATTERNS = [
+/**
+ * Исключения для СЕКЦИИ «ФАЙЛЫ» (только к листингу контента, НЕ к дереву):
+ * - По требованию исключаем .meta/** и assets/** (не попадут в контент),
+ * - Исключаем служебные каталоги.
+ */
+const EXCLUDE_FILES_PATTERNS = [
   "node_modules/**",
   ".git/**",
   ".meta/**",
@@ -5559,7 +5600,22 @@ const EXCLUDE_PATTERNS = [
   "**/*.log",".DS_Store"
 ].map(globToRegExp);
 
-// Приоритеты для сортировки текстовых файлов в секции «ФАЙЛЫ»
+/**
+ * Исключения ТОЛЬКО для СТРУКТУРЫ ДЕРЕВА:
+ * - По требованию показываем ВСЕ файлы, включая assets/**.
+ * - Исключаем только .git/**, .meta/** и служебные каталоги (node_modules и т.п.),
+ *   плюс защищаемся от самовключения итоговых файлов.
+ */
+const EXCLUDE_TREE_PATTERNS = [
+  "node_modules/**",
+  ".git/**",
+  ".meta/**",
+  ".next/**","dist/**","build/**","out/**","coverage/**",
+  ".cache/**",".vscode/**",".idea/**",".husky/**",
+  "**/*.log",".DS_Store"
+].map(globToRegExp);
+
+// Приоритеты для секции «ФАЙЛЫ»
 const PRIORITY = {
   critical: [
     /^index\.html?$/i,
@@ -5584,62 +5640,84 @@ const PRIORITY = {
   ],
 };
 
-// ---------- utils ----------
+// -------------------- Утилиты --------------------
+function toUnix(p) {
+  return String(p).replace(/\\/g, "/");
+}
 function globToRegExp(pat) {
   const esc = pat
-    .replace(/[.+^${}()|[\]\\]/g,"\\$")
-    .replace(/\*\*/g,"___GLOBSTAR___")
-    .replace(/\*/g,"[^/]*")
-    .replace(/___GLOBSTAR___/g,".*");
+    .replace(/[.+^${}()|[\]\\]/g, "\\$")
+    .replace(/\*\*/g, "___GLOBSTAR___")
+    .replace(/\*/g, "[^/]*")
+    .replace(/___GLOBSTAR___/g, ".*");
   return new RegExp("^" + esc + "$");
 }
-function toUnix(p) { return String(p).replace(/\\/g,"/"); }
+function isTextFile(rel) {
+  return TEXT_EXTS.has(path.extname(rel).toLowerCase());
+}
+function readText(rel) {
+  try { return fs.readFileSync(path.join(ROOT, rel), "utf8"); }
+  catch (e) { return `// read error: ${e.message}`; }
+}
+function countLines(s) {
+  return (s.match(/\n/g) || []).length + (s.length ? 1 : 0);
+}
 
-function isExcluded(rel) {
+// Исключения для секции «ФАЙЛЫ»
+function isExcludedForFiles(rel) {
   const u = toUnix(rel);
   if (!u) return true;
-  // Жёсткий запрет самовключения результирующих файлов (доп. защита):
-  if (u === SELF_FULL_REL || u === SELF_ADAPT_REL) return true;
-  return EXCLUDE_PATTERNS.some(re => re.test(u));
+  if (u === SELF_FULL_REL || u === SELF_ADAPT_REL) return true; // защита от самовключения
+  return EXCLUDE_FILES_PATTERNS.some(re => re.test(u));
 }
-function isTextFile(rel) { return TEXT_EXTS.has(path.extname(rel).toLowerCase()); }
+// Исключения для дерева
+function isExcludedForTree(rel) {
+  const u = toUnix(rel);
+  if (!u) return true;
+  if (u === SELF_FULL_REL || u === SELF_ADAPT_REL) return true; // защита от самовключения
+  return EXCLUDE_TREE_PATTERNS.some(re => re.test(u));
+}
 
-// ---------- scan ----------
-function listAllEntries(includeFiles = true) {
+// -------------------- Сканирование --------------------
+function listAllEntries(includeFiles = true, forTree = false) {
   const res = [];
-  const st = [ROOT];
-  while (st.length) {
-    const d = st.pop();
-    let ents = [];
-    try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { continue; }
-    for (const e of ents) {
-      const full = path.join(d, e.name);
+  const stack = [ROOT];
+
+  while (stack.length) {
+    const dir = stack.pop();
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+
+    for (const e of entries) {
+      const full = path.join(dir, e.name);
       const rel = toUnix(path.relative(ROOT, full)) || ".";
-      if (isExcluded(rel)) continue;
+
+      // Выбор правил исключения: для дерева — свои, для контента — свои
+      const excluded = forTree ? isExcludedForTree(rel) : isExcludedForFiles(rel);
+      if (excluded) continue;
+
       if (e.isDirectory()) {
         res.push({ rel, full, dir: true });
-        st.push(full);
+        stack.push(full);
       } else if (e.isFile() && includeFiles) {
         res.push({ rel, full, dir: false });
       }
     }
   }
-  res.sort((a,b)=> (a.dir !== b.dir ? (a.dir ? -1 : 1) : a.rel.localeCompare(b.rel)));
+
+  // Папки сверху, затем файлы; внутри — по алфавиту
+  res.sort((a, b) => (a.dir !== b.dir ? (a.dir ? -1 : 1) : a.rel.localeCompare(b.rel)));
   return res;
 }
-function listTextFiles() {
-  return listAllEntries(true).filter(e => !e.dir && isTextFile(e.rel)).map(e => e.rel);
+
+function listTextFilesForContent() {
+  return listAllEntries(true, /*forTree*/ false)
+    .filter(e => !e.dir && isTextFile(e.rel))
+    .map(e => e.rel);
 }
 
-// ---------- io ----------
-function read(rel) {
-  try { return fs.readFileSync(path.join(ROOT, rel), "utf8"); }
-  catch (e) { return `// read error: ${e.message}`; }
-}
-function countLines(s){ return (s.match(/\n/g)||[]).length + (s.length?1:0); }
-
-// ---------- meta ----------
-function repoMeta() {
+// -------------------- Репозиторий --------------------
+function readRepoMeta() {
   let url = "";
   try {
     const cfg = path.join(ROOT, ".git", "config");
@@ -5652,76 +5730,88 @@ function repoMeta() {
   return {
     name: path.basename(ROOT),
     url: url || "(URL репозитория не обнаружен; укажите в .git/config)",
-    madeWith: "Проект делается и обслуживается средствами https://github.com/ (GitHub Pages + GitHub Actions)."
+    madeWith: "Проект делается и обслуживается средствами https://github.com/ (GitHub Pages + GitHub Actions).",
   };
 }
 
-// ---------- blocks ----------
+// -------------------- Блоки заголовка --------------------
 function rulesBlock() {
   return [
-    'ПРАВИЛА ДЛЯ НЕЙРОСЕТЕЙ (важно для качества ответов):',
-    '- Язык ответов: по умолчанию RU. Английский — если явно попросят или в именах/терминах.',
-    '- Всегда указывай точные пути файлов при ссылках (например, src/app/(main)/timeline/page.tsx).',
-    '- Любой код выводи ТОЛЬКО в тройных бэктиках с указанием языка, например:',
-    '  ```ts',
-    '  export function x() {}',
-    '  ```',
-    '- Не используй тяжелое форматирование. Разрешены: списки, короткие таблицы.',
-    '- Если требуются изменения в файле — показывай минимальный патч (unified diff) или целиком обновлённый файл (не смешивать).',
-    '- Не выдумывай зависимости и API. Если данных нет — явно скажи «нужно уточнение».',
-    '- Перед архитектурой проверяй совместимость (Next 14 App Router, @xyflow/react, d3, next-intl 3.x).',
-    '- Команды терминала — в блоках ```bash; секреты не логируй.',
-    '- i18n: учитывай RU/EN/ORIG и фоллбеки ru→en→orig.',
-    '- Даты: ISO 8601, точность (год/месяц/день), circa, календарь.',
-    '- PDF в MVP — только print CSS; CJK/RTL позже (pdfmake/@react-pdf или Puppeteer).',
-    '- Стиль кода: TypeScript strict, ESM-импорты, 2 пробела.',
-    '- CI/Actions: сборка контекста автономна даже при сломанном приложении.',
-    '- НИКОГДА не генерируй весь файл целиком; только блоки для замены со строгим указанием места.',
-    '- Формат изменений: -> ФАЙЛ: путь -> НАЙТИ: [фрагмент дословно] -> ЗАМЕНИТЬ НА: [полный новый блок].',
-    '- Сохраняй комментарии, форматирование и импорт-структуру.',
-    '- Если удаляем блок — укажи строку перед и строку после (из реального кода).',
-    '- Всегда пиши краткое обоснование, что и почему делаем.',
-    ''
+    "ПРАВИЛА ДЛЯ НЕЙРОСЕТЕЙ (важно для качества ответов):",
+    "- Язык ответов: по умолчанию RU. Английский — если явно попросят или в именах/терминах.",
+    "- Всегда указывай точные пути файлов при ссылках (например, src/app/(main)/timeline/page.tsx).",
+    "- Любой код выводи ТОЛЬКО в тройных бэктиках с указанием языка, например:",
+    "  ```ts",
+    "  export function x() {}",
+    "  ```",
+    "- Не используй тяжелое форматирование. Разрешены: списки, короткие таблицы.",
+    "- Если требуются изменения в файле — показывай минимальный патч (unified diff) или целиком обновлённый файл (не смешивать).",
+    "- Не выдумывай зависимости и API. Если данных нет — явно скажи «нужно уточнение».",
+    "- Перед архитектурой проверяй совместимость (Next 14 App Router, @xyflow/react, d3, next-intl 3.x).",
+    "- Команды терминала — в блоках ```bash; секреты не логируй.",
+    "- i18n: учитывай RU/EN/ORIG и фоллбеки ru→en→orig.",
+    "- Даты: ISO 8601, точность (год/месяц/день), circa, календарь.",
+    "- PDF в MVP — только print CSS; CJK/RTL позже (pdfmake/@react-pdf или Puppeteer).",
+    "- Стиль кода: TypeScript strict, ESM-импорты, 2 пробела.",
+    "- CI/Actions: сборка контекста автономна даже при сломанном приложении.",
+    "- НИКОГДА не генерируй весь файл целиком; только блоки для замены со строгим указанием места.",
+    "- Формат изменений: -> ФАЙЛ: путь -> НАЙТИ: [фрагмент дословно] -> ЗАМЕНИТЬ НА: [полный новый блок].",
+    "- Сохраняй комментарии, форматирование и импорт-структуру.",
+    "- Если удаляем блок — укажи строку перед и строку после (из реального кода).",
+    "- Всегда пиши краткое обоснование, что и почему делаем.",
+    ""
   ].join("\n");
 }
+
 function metaBlock() {
-  const m = repoMeta();
+  const m = readRepoMeta();
   return [
     `Название репозитория: ${m.name}`,
     `Адрес репозитория: ${m.url}`,
-    'Описание: Статическое PWA (GitHub Pages): альбомы/галереи (albums/gallery/*/index.json), мини‑плеер, офлайн (Service Worker), CI (оптимизация изображений, генерация индексов/контекста).',
+    "Описание: Статическое PWA (GitHub Pages): альбомы/галереи (albums/gallery/*/index.json), мини‑плеер, офлайн (Service Worker), CI (оптимизация изображений, генерация индексов/контекста).",
     m.madeWith,
-    ''
+    ""
   ].join("\n");
 }
-function buildTreeFull() {
+
+// -------------------- СТРУКТУРА ПРОЕКТА (дерево) --------------------
+function buildFullTree() {
   const lines = [];
   lines.push(path.basename(ROOT) + "/");
+
   function walk(dir, prefix = "") {
     let entries = [];
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+
     const visible = entries
-      .filter(e => !isExcluded(toUnix(path.relative(ROOT, path.join(dir, e.name)))))
-      .sort((a,b)=> (a.isDirectory()!==b.isDirectory()? (a.isDirectory()?-1:1) : a.name.localeCompare(b.name)));
-    visible.forEach((e, idx) => {
-      const isLast = idx === visible.length - 1;
+      .filter(e => !isExcludedForTree(toUnix(path.relative(ROOT, path.join(dir, e.name)))))
+      .sort((a, b) => (a.isDirectory() !== b.isDirectory() ? (a.isDirectory() ? -1 : 1) : a.name.localeCompare(b.name)));
+
+    visible.forEach((e, i) => {
+      const isLast = i === visible.length - 1;
       const branch = isLast ? "└── " : "├── ";
-      lines.push(prefix + branch + e.name + (e.isDirectory()? "/" : ""));
-      if (e.isDirectory()) walk(path.join(dir, e.name), prefix + (isLast ? "    " : "│   "));
+      lines.push(prefix + branch + e.name + (e.isDirectory() ? "/" : ""));
+      if (e.isDirectory()) {
+        walk(path.join(dir, e.name), prefix + (isLast ? "    " : "│   "));
+      }
     });
   }
+
   walk(ROOT);
   return lines.join("\n") + "\n\n";
 }
 
-// ---------- files ----------
+// -------------------- Секция «ФАЙЛЫ» --------------------
 function getPriority(rel) {
   const u = toUnix(rel);
-  for (const [lvl, rules] of Object.entries(PRIORITY)) if (rules.some(re => re.test(u))) return lvl;
+  for (const [lvl, rules] of Object.entries(PRIORITY)) {
+    if (rules.some(re => re.test(u))) return lvl;
+  }
   return "low";
 }
-function filesByPriority() {
-  const all = listTextFiles();
+
+function groupFilesByPriority() {
+  const all = listTextFilesForContent(); // уже исключены assets/.meta и прочие по EXCLUDE_FILES_PATTERNS
   return {
     critical: all.filter(f => getPriority(f) === "critical"),
     high:     all.filter(f => getPriority(f) === "high"),
@@ -5729,44 +5819,54 @@ function filesByPriority() {
     low:      all.filter(f => getPriority(f) === "low"),
   };
 }
+
 function fileBlock(rel) {
   return [
     "//=================================================",
     `// FILE: /${toUnix(rel)}`,
-    read(rel),
+    readText(rel),
     ""
   ].join("\n");
 }
 
-// ---------- header ----------
+// -------------------- Заголовок отчёта --------------------
 function headerBlock() {
   const now = new Date().toISOString().replace("T"," ").slice(0,19) + " UTC";
   return [
     rulesBlock(),
     metaBlock(),
     "СТРУКТУРА ПРОЕКТА:",
-    buildTreeFull(),
+    buildFullTree(),
     `Сгенерировано: ${now}`,
     ""
   ].join("\n");
 }
 
-// ---------- generators ----------
+// -------------------- Генераторы --------------------
 function generateFull() {
   let out = headerBlock();
-  const groups = filesByPriority();
-  for (const lvl of ["critical","high","medium","low"]) {
-    for (const f of groups[lvl]) out += fileBlock(f);
+
+  const groups = groupFilesByPriority();
+  const order = ["critical", "high", "medium", "low"];
+  for (const lvl of order) {
+    for (const f of groups[lvl]) {
+      out += fileBlock(f);
+    }
   }
-  return out; // БЕЗ блока «критичные логи»
+
+  // БЕЗ блока «Критичные логи»
+  return out;
 }
+
 function generateAdaptive() {
   let out = headerBlock();
   let cur = countLines(out);
   const max = MAX_LINES;
-  const groups = filesByPriority();
 
-  for (const lvl of ["critical","high","medium"]) {
+  const groups = groupFilesByPriority();
+  const order = ["critical", "high", "medium"]; // low пропускаем в adaptive чаще всего
+
+  for (const lvl of order) {
     for (const f of groups[lvl]) {
       const block = fileBlock(f);
       const L = countLines(block);
@@ -5777,9 +5877,12 @@ function generateAdaptive() {
       out += block; cur += L;
     }
   }
-  return out; // БЕЗ блока «критичные логи»
+
+  // БЕЗ блока «Критичные логи»
+  return out;
 }
 
+// -------------------- MAIN --------------------
 function main() {
   if (MODE === "full" || MODE === "both") {
     fs.writeFileSync(FULL_FILE, generateFull(), "utf8");
@@ -5828,6 +5931,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Optimize Images and Build Gallery Index
 Status: failure
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19140757525
-Time: 2025-11-06 15:33:03 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19141070485
+Time: 2025-11-06 15:42:53 UTC
 
