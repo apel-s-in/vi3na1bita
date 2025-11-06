@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-67de7bb4738582e1a858962c783c4e332299897c.idx
-│   │       ├── pack-67de7bb4738582e1a858962c783c4e332299897c.pack
-│   │       └── pack-67de7bb4738582e1a858962c783c4e332299897c.rev
+│   │       ├── pack-9a1e515097e510b9cd184b1d1e5bed4927b3df5b.idx
+│   │       ├── pack-9a1e515097e510b9cd184b1d1e5bed4927b3df5b.pack
+│   │       └── pack-9a1e515097e510b9cd184b1d1e5bed4927b3df5b.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -262,7 +262,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 16:41:05 UTC
+Сгенерировано: 2025-11-06 16:42:55 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1036,7 +1036,13 @@ jobs:
 //=================================================
 // FILE: /generate-index.js
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
+
+// Локальная синхронная проверка существования файла
+function existsSyncSafely(p) {
+  try { fsSync.accessSync(p); return true; } catch { return false; }
+}
 
 // Базовая директория галерей
 const GALLERY_BASE = './albums/gallery';
