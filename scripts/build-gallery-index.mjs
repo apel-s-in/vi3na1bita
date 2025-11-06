@@ -61,23 +61,48 @@ function toFormats(baseDir, fileName) {
 async function processGalleryDir(absDir) {
   const entries = await fs.readdir(absDir, { withFileTypes: true });
   const files = entries.filter(e => e.isFile()).map(e => e.name);
+
   const htmls = files.filter(f => HTML_EXT.has(path.extname(f).toLowerCase())).sort();
-  const imgs  = files.filter(f => IMG_EXT.has(path.extname(f).toLowerCase())).sort();
+
+  // Группируем изображения по базовому имени (без расширения): один логический кадр = один item
+  const byBase = new Map();
+  for (const f of files) {
+    const ext = path.extname(f).toLowerCase();
+    if (!IMG_EXT.has(ext)) continue;
+    const base = f.slice(0, -ext.length);
+    const list = byBase.get(base) || [];
+    list.push({ name: f, ext });
+    byBase.set(base, list);
+  }
+
+  // Порядок предпочтения исходника (что конвертировать в другие форматы)
+  const SRC_ORDER = ['.jpg', '.jpeg', '.png', '.webp', '.avif'];
 
   const items = [];
 
-  for (const f of htmls) items.push({ type: 'html', src: asRel(path.join(absDir, f)) });
+  for (const f of htmls) {
+    items.push({ type: 'html', src: asRel(path.join(absDir, f)) });
+  }
 
-  for (const f of imgs) {
-    const fm = toFormats(absDir, f);
+  for (const [base, variants] of Array.from(byBase.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+    // Выбираем лучший исходник
+    const pick = SRC_ORDER.find(ext => variants.some(v => v.ext === ext)) || variants[0].ext;
+    const chosen = variants.find(v => v.ext === pick) || variants[0];
+
+    const fm = toFormats(absDir, chosen.name);
     if (!fm) continue;
+
     await ensureDir(fm.dirThumbs);
-    await convertIfMissing(fm.fullAbs, path.join(absDir, `${path.parse(f).name}.webp`), 'webp');
-    await convertIfMissing(fm.fullAbs, path.join(absDir, `${path.parse(f).name}.avif`), 'avif');
+    // Генерим недостающие производные только по выбранному исходнику
+    await convertIfMissing(fm.fullAbs, path.join(absDir, `${base}.webp`), 'webp');
+    await convertIfMissing(fm.fullAbs, path.join(absDir, `${base}.avif`), 'avif');
     await convertIfMissing(fm.fullAbs, fm.thumbAbs, 'thumb');
 
     const meta = await getImageMeta(fm.fullAbs);
-    items.push({ formats: { full: fm.full, webp: fm.webp, avif: fm.avif, thumb: fm.thumb }, width: meta.width, height: meta.height, size: meta.size });
+    items.push({
+      formats: { full: fm.full, webp: fm.webp, avif: fm.avif, thumb: fm.thumb },
+      width: meta.width, height: meta.height, size: meta.size
+    });
   }
 
   await fs.writeFile(path.join(absDir, 'index.json'), JSON.stringify({ items }, null, 2), 'utf8');
