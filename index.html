@@ -905,15 +905,30 @@
       const r = await fetch(baseDir + 'index.json', { cache: 'no-cache' });
       if (r.ok) {
         const j = await r.json();
-        const first = Array.isArray(j.items) ? j.items[0] : (Array.isArray(j) ? j[0] : null);
+        const arr = Array.isArray(j.items) ? j.items : (Array.isArray(j) ? j : []);
+        // Нормализуем и ДЕДУПЛИЦИРУЕМ по базовому имени (чтобы не листало форматы одного кадра)
+        const tmp = [];
+        for (const raw of arr) {
+          const norm = normalizeGalleryItem(raw, baseDir);
+          if (norm) tmp.push(norm);
+        }
+        const pickKey = (item) => {
+          const url = (item.formats?.full || item.src || '').split('?')[0];
+          const name = url.split('/').pop() || '';
+          return name.replace(/\.(avif|webp|jpe?g|png)$/i, '').replace(/-thumb$/i, '');
+        };
+        const seen = new Set();
+        const out = [];
+        for (const it of tmp) {
+          const k = pickKey(it);
+          if (k && !seen.has(k)) { seen.add(k); out.push(it); }
+        }
+        const first = out[0] || null;
         if (first) {
-          const norm = normalizeGalleryItem(first, baseDir);
-          if (norm) {
-            if (norm.type === 'html') setQuickCoverHtml(norm.src);
-            else setQuickCoverSrc(norm.formats?.full || norm.src);
-            showGalleryNav();
-            return;
-          }
+          if (first.type === 'html') setQuickCoverHtml(first.src);
+          else setQuickCoverSrc(first.formats?.full || first.src);
+          showGalleryNav();
+          return;
         }
       }
       setQuickCoverSrc('img/logo.png');
@@ -1195,7 +1210,7 @@
         if (t.fulltext) t.fulltext = absJoin(base, t.fulltext);
       });
       albumConfigCache[key] = { base, config: data };
-      await applyAlbumConfig(base, data, { skipCovers: false, signal });
+      await applyAlbumConfig(base, data, { skipCovers: true, signal });
 
       try {
         const gal = await buildCoverGalleryList(currentAlbumKey, base, signal);
@@ -1233,10 +1248,12 @@
 
   async function applyAlbumConfig(base, data, { skipCovers = false, signal } = {}) {
     try {
-      await applyAlbumBackgroundFromGallery(currentAlbumKey);
-    } catch {
-      document.body.style.background = `#181818`;
-    }
+      if (data.background) {
+        document.body.style.background = `url(${absJoin(base, data.background)}) center/cover fixed #111`;
+      } else {
+        document.body.style.background = `#181818`;
+      }
+    } catch {}
 
     config = data;
 
