@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-8597f86b828b419ed4eb7ffb2a4be40f7a18a0ef.idx
-│   │       ├── pack-8597f86b828b419ed4eb7ffb2a4be40f7a18a0ef.pack
-│   │       └── pack-8597f86b828b419ed4eb7ffb2a4be40f7a18a0ef.rev
+│   │       ├── pack-8f7ff8d3fe09b32ded7f5e78a65d14df17c1c32c.idx
+│   │       ├── pack-8f7ff8d3fe09b32ded7f5e78a65d14df17c1c32c.pack
+│   │       └── pack-8f7ff8d3fe09b32ded7f5e78a65d14df17c1c32c.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -220,13 +220,13 @@ vi3na1bita/
 │   │   ├── icon-album-02.png
 │   │   ├── icon-album-02@1x.png
 │   │   ├── icon-album-02@2x.png
-│   │   ├── icon-album-03.png
 │   │   ├── icon-album-news.png
 │   │   ├── icon-album-news@1x.png
 │   │   ├── icon-album-news@2x.png
 │   │   ├── icon-album+00.png
 │   │   ├── icon-album+00@1x.png
-│   │   └── icon-album+00@2x.png
+│   │   ├── icon-album+00@2x.png
+│   │   └── icon-news.png
 │   ├── mobile/
 │   │   ├── logo@1x.jpg
 │   │   └── logo@2x.jpg
@@ -262,7 +262,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 19:22:39 UTC
+Сгенерировано: 2025-11-06 19:24:08 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
