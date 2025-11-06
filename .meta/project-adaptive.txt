@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-e480c73d7fa1f9855c8a52122dadd615c831aee6.idx
-│   │       ├── pack-e480c73d7fa1f9855c8a52122dadd615c831aee6.pack
-│   │       └── pack-e480c73d7fa1f9855c8a52122dadd615c831aee6.rev
+│   │       ├── pack-53442af02cc72fc050f05cc8f1f5941a494d7469.idx
+│   │       ├── pack-53442af02cc72fc050f05cc8f1f5941a494d7469.pack
+│   │       └── pack-53442af02cc72fc050f05cc8f1f5941a494d7469.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -261,7 +261,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 20:42:52 UTC
+Сгенерировано: 2025-11-06 20:53:20 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
