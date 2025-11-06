@@ -30,7 +30,11 @@ const CORE_ASSETS = [
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CORE_CACHE);
-    await cache.addAll(CORE_ASSETS.map(url => new Request(url, { cache: 'reload' })));
+    try {
+      await cache.addAll(CORE_ASSETS.map(url => new Request(url, { cache: 'reload' })));
+    } catch (e) {
+      console.warn('SW install: some core assets failed to cache', e);
+    }
     await self.skipWaiting();
   })());
 });
