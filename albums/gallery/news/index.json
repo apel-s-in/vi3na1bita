@@ -6,6 +6,16 @@
     },
     {
       "formats": {
+        "full": "albums/gallery/news/news-cover-02.avif",
+        "webp": "albums/gallery/news/news-cover-02.webp",
+        "avif": "albums/gallery/news/news-cover-02.avif"
+      },
+      "width": 1024,
+      "height": 1024,
+      "size": 44017
+    },
+    {
+      "formats": {
         "full": "albums/gallery/news/news-cover-02.png",
         "webp": "albums/gallery/news/news-cover-02.webp",
         "avif": "albums/gallery/news/news-cover-02.avif"
@@ -13,6 +23,16 @@
       "width": 1024,
       "height": 1024,
       "size": 1650767
+    },
+    {
+      "formats": {
+        "full": "albums/gallery/news/news-cover-02.webp",
+        "webp": "albums/gallery/news/news-cover-02.webp",
+        "avif": "albums/gallery/news/news-cover-02.avif"
+      },
+      "width": 1024,
+      "height": 1024,
+      "size": 139078
     }
   ]
 }
