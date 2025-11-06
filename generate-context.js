@@ -1,21 +1,28 @@
 /* eslint-disable no-console */
 "use strict";
 
+/**
+ * Генератор .meta/project-full.txt и .meta/project-adaptive.txt
+ * Структура выводов:
+ * 1) ПРАВИЛА ДЛЯ НЕЙРОСЕТЕЙ
+ * 2) МЕТА-БЛОК: имя/URL репозитория, «проект делается средствами GitHub»
+ * 3) СТРУКТУРА ПРОЕКТА: ПОЛНОЕ дерево всех файлов (включая бинарные),
+ *    исключая только .git/** и .meta/** (и прочие служебные исключения).
+ * 4) ФАЙЛЫ (по приоритетам): для текстовых файлов — ПОЛНЫЙ КОД.
+ *    Каждый файл отделяется:
+ *    //=================================================
+ *    // FILE: /полный/путь
+ *    <полный код без сокращений>
+ * 5) КРИТИЧНЫЕ ЛОГИ: подключение .meta/ci-last.txt, sw-errors.txt, browser-errors.txt если присутствуют.
+ *
+ * Запуск:
+ *   node generate-context.js --mode=both --max-lines=20000
+ */
+
 const fs = require("fs");
 const path = require("path");
 
-/**
- * Генерирует .meta/project-full.txt и .meta/project-adaptive.txt с унифицированной структурой:
- * 1) ПРАВИЛА ДЛЯ НЕЙРОСЕТЕЙ
- * 2) МЕТА-БЛОК: repo name/url, «делается средствами GitHub»
- * 3) ДЕРЕВО ПРОЕКТА (только папки/файлы; бинарные не включаем)
- * 4) ФАЙЛЫ (по приоритету): каждый отделён
- *    //=================================================
- *    // FILE: <полный путь>
- *    <полный код без сокращений>
- * 5) КРИТИЧНЫЕ ЛОГИ: сжатая выжимка (GitHub Actions, Service Worker, браузерные ошибки)
- */
-
+// CLI
 const argv = Object.fromEntries(
   process.argv.slice(2).map(a => {
     const [k, ...r] = a.replace(/^--/,"").split("=");
@@ -28,18 +35,36 @@ const META_DIR = path.resolve(argv["out-dir"] || path.join(ROOT, ".meta"));
 const MODE = (argv.mode || "both").toLowerCase(); // full | adaptive | both
 const MAX_LINES = Number(argv["max-lines"] || 20000);
 
-// Настройка сканирования
-const TEXT_EXTS = new Set([".html",".htm",".js",".mjs",".cjs",".ts",".tsx",".css",".json",".webmanifest",".md",".txt",".yml",".yaml"]);
-const EXCLUDE = [
-  "node_modules/**",".git/**",".next/**","dist/**","build/**","out/**","coverage/**",".cache/**",".vscode/**",".idea/**",
-  ".husky/**",".meta/**","**/*.log",".DS_Store"
-].map(globToRegExp);
-
 if (!fs.existsSync(META_DIR)) fs.mkdirSync(META_DIR, { recursive: true });
 const FULL_FILE = path.join(META_DIR, "project-full.txt");
 const ADAPTIVE_FILE = path.join(META_DIR, "project-adaptive.txt");
 
-// Приоритеты (упорядочиваем, что попадёт раньше)
+// Расширения «текстовых» файлов, для которых будет выведен ПОЛНЫЙ КОД
+const TEXT_EXTS = new Set([
+  ".html",".htm",".css",".js",".mjs",".cjs",".ts",".tsx",
+  ".json",".webmanifest",".md",".txt",".yml",".yaml"
+]);
+
+// Исключения (применяются и к дереву, и к выбору файлов для кода)
+const EXCLUDE_PATTERNS = [
+  "node_modules/**",".git/**",".meta/**",".next/**","dist/**","build/**","out/**",
+  "coverage/**",".cache/**",".vscode/**",".idea/**",".husky/**","**/*.log",".DS_Store"
+].map(globToRegExp);
+
+function globToRegExp(pat) {
+  const esc = pat
+    .replace(/[.+^${}()|[\]\\]/g,"\\$")
+    .replace(/\*\*/g,"___GLOBSTAR___")
+    .replace(/\*/g,"[^/]*")
+    .replace(/___GLOBSTAR___/g,".*");
+  return new RegExp("^" + esc + "$");
+}
+const toUnix = p => p.replace(/\\/g,"/");
+
+function isExcluded(rel) { return EXCLUDE_PATTERNS.some(re => re.test(toUnix(rel))); }
+function isTextFile(rel) { return TEXT_EXTS.has(path.extname(rel).toLowerCase()); }
+
+// -------- Приоритеты (упорядочивает список файлов-кода) --------
 const PRIORITY = {
   critical: [
     /^index\.html?$/i,
@@ -55,27 +80,17 @@ const PRIORITY = {
   high: [
     /^AudioController\.(js|mjs|cjs|ts)$/i,
     /^GlobalState\.(js|mjs|cjs|ts)$/i,
-    /^.*\.(ya?ml)$/i,
+    /^scripts\/.*\.(mjs|js|ts)$/i,
+    /^performance\/.*\.(js|ts)$/i,
+    /^.*\.(ya?ml)$/i
   ],
   medium: [
     /^.*\.(js|mjs|cjs|ts|tsx|json|html?|css)$/i
   ],
 };
 
-// ---------- Утилиты ----------
-function globToRegExp(pat) {
-  const esc = pat.replace(/[.+^${}()|[\]\\]/g,"\\$")
-    .replace(/\*\*/g,"___GLOBSTAR___")
-    .replace(/\*/g,"[^/]*")
-    .replace(/___GLOBSTAR___/g,".*");
-  return new RegExp("^" + esc + "$");
-}
-const toUnix = p => p.replace(/\\/g,"/");
-
-function isExcluded(rel) { return EXCLUDE.some(re => re.test(toUnix(rel))); }
-function isTextFile(rel) { return TEXT_EXTS.has(path.extname(rel).toLowerCase()); }
-
-function listAllFiles() {
+// -------- Сканирование файлов --------
+function listAllEntries(includeFiles = true) {
   const res = [];
   const st = [ROOT];
   while (st.length) {
@@ -86,13 +101,30 @@ function listAllFiles() {
       const full = path.join(d, e.name);
       const rel = toUnix(path.relative(ROOT, full)) || ".";
       if (isExcluded(rel)) continue;
-      if (e.isDirectory()) st.push(full);
-      else if (e.isFile() && isTextFile(rel)) res.push(rel);
+      if (e.isDirectory()) {
+        res.push({ rel, full, dir: true });
+        st.push(full);
+      } else if (e.isFile() && includeFiles) {
+        res.push({ rel, full, dir: false });
+      }
     }
   }
-  return res.sort();
+  // Отсортируем: папки сверху, затем файлы по имени
+  res.sort((a, b) => {
+    if (a.dir !== b.dir) return a.dir ? -1 : 1;
+    return a.rel.localeCompare(b.rel);
+  });
+  return res;
 }
 
+function listTextFilesOnly() {
+  const all = listAllEntries(true);
+  return all
+    .filter(e => !e.dir && isTextFile(e.rel))
+    .map(e => e.rel);
+}
+
+// -------- Чтение/вспомогательные --------
 function read(rel) {
   try { return fs.readFileSync(path.join(ROOT, rel), "utf8"); }
   catch (e) { return `// read error: ${e.message}`; }
@@ -107,27 +139,25 @@ function getPriority(rel) {
   return "low";
 }
 
+// -------- Repo метаданные --------
 function repoMeta() {
-  // Определяем имя/URL репо из origin, если доступен, иначе подсказки
   let repoUrl = "";
   try {
-    const git = path.join(ROOT, ".git", "config");
-    if (fs.existsSync(git)) {
-      const cfg = fs.readFileSync(git, "utf8");
+    const gitcfg = path.join(ROOT, ".git", "config");
+    if (fs.existsSync(gitcfg)) {
+      const cfg = fs.readFileSync(gitcfg, "utf8");
       const m = cfg.match(/url\s*=\s*(.+)\n/);
       if (m) repoUrl = m[1].trim();
     }
   } catch {}
-  const repoName = path.basename(ROOT);
-
   return {
-    name: repoName,
-    url: repoUrl || "(укажите URL репозитория в .git/config)",
-    madeWith: "Проект развёрнут и обслуживается средствами GitHub (GitHub Pages + GitHub Actions).",
+    name: path.basename(ROOT),
+    url: repoUrl || "(URL репозитория не обнаружен; укажите в .git/config)",
+    madeWith: "Проект делается и обслуживается средствами https://github.com/ (GitHub Pages + GitHub Actions)."
   };
 }
 
-// ---------- Шапка: ПРАВИЛА ----------
+// -------- Шапка: ПРАВИЛА --------
 function rulesBlock() {
   return [
     'ПРАВИЛА ДЛЯ НЕЙРОСЕТЕЙ (важно для качества ответов):',
@@ -156,88 +186,83 @@ function rulesBlock() {
   ].join("\n");
 }
 
-// ---------- Мета-блок ----------
+// -------- Мета-блок --------
 function metaBlock() {
-  const meta = repoMeta();
-  const desc = [
-    'Название репозитория: ' + meta.name,
-    'Адрес репозитория: ' + meta.url,
-    'Описание: Веб‑приложение (статическое PWA) для прослушивания альбомов, с галереями (albums/gallery/*/index.json), мини‑плеером, офлайн‑режимом (Service Worker), CI для оптимизации изображений и автогенерации индексов/контекста.',
-    meta.madeWith,
+  const m = repoMeta();
+  return [
+    `Название репозитория: ${m.name}`,
+    `Адрес репозитория: ${m.url}`,
+    'Описание: Статическое PWA на GitHub Pages — альбомы/галереи (albums/gallery/*/index.json), мини‑плеер, офлайн (Service Worker), CI (оптимизация изображений, генерация индексов/контекста).',
+    m.madeWith,
     ''
   ].join("\n");
-  return desc;
 }
 
-// ---------- Дерево проекта ----------
-function buildTree() {
-  // Выводим только структуру каталогов + имена файлов (текстовых) из репозитория
+// -------- Полное дерево проекта (включая бинарные) --------
+function buildFullTree() {
   const lines = [];
+  const rootName = path.basename(ROOT);
+  lines.push(rootName + "/");
+
   function walk(dir, prefix = "") {
     let entries = [];
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-    // Сортируем: папки сверху
-    entries.sort((a,b) => (a.isDirectory() === b.isDirectory() ? a.name.localeCompare(b.name) : (a.isDirectory() ? -1 : 1)));
 
-    const filtered = entries.filter(e => !isExcluded(toUnix(path.relative(ROOT, path.join(dir, e.name)))));
-    const lastIdx = filtered.length - 1;
+    // Отфильтровать исключения, отсортировать: папки, затем файлы
+    const visible = entries.filter(e => {
+      const rel = toUnix(path.relative(ROOT, path.join(dir, e.name)));
+      return !isExcluded(rel);
+    }).sort((a, b) => {
+      if (a.isDirectory() !== b.isDirectory()) return a.isDirectory() ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
 
-    filtered.forEach((e, idx) => {
-      const pointer = (idx === lastIdx) ? "└── " : "├── ";
-      const rel = path.join(dir, e.name);
-      if (e.isDirectory()) {
-        lines.push(prefix + pointer + e.name + "/");
-        walk(rel, prefix + (idx === lastIdx ? "    " : "│   "));
-      } else {
-        // показываем только текстовые
-        const projRel = toUnix(path.relative(ROOT, rel));
-        if (isTextFile(projRel)) lines.push(prefix + pointer + e.name);
-      }
+    visible.forEach((e, idx) => {
+      const isLast = idx === visible.length - 1;
+      const pointer = isLast ? "└── " : "├── ";
+      const mark = prefix + pointer + e.name + (e.isDirectory() ? "/" : "");
+      lines.push(mark);
+      const full = path.join(dir, e.name);
+      if (e.isDirectory()) walk(full, prefix + (isLast ? "    " : "│   "));
     });
   }
-  lines.push(path.basename(ROOT) + "/");
+
   walk(ROOT);
   return lines.join("\n") + "\n\n";
 }
 
-// ---------- Критичные логи ----------
-function criticalLogsBlock() {
-  // Источники:
-  // - Последние workflow run logs недоступны локально — дадим инструкции по сбору (и slot).
-  // - SW: в проекте можно хранить сводку ошибок (если есть) в .meta/sw-errors.txt (собирайте в runtime и загружайте артефактом)
-  // - Browser: рекомендуем выводить window.__CRITICAL_LOGS__ в отдельный файл при сборке контекста (если присутствует).
-  const hints = [
-    "КРИТИЧНЫЕ ЛОГИ (рекомендации по сбору):",
-    "- GitHub Actions: храните последние 1–3 лога в .meta/ci-last.txt (job: pages, images, context). Можно собирать curl'ом GitHub API в отдельном job и писать сюда.",
-    "- Service Worker: пишите критичные ветки (install/activate/fetch ошибки) в IndexedDB + выгружайте в .meta/sw-errors.txt при сборке контекста.",
-    "- Браузерные ошибки: агрегируйте window.__CRITICAL_LOGS__ и сериализуйте в .meta/browser-errors.txt (если файл существует, будет включён).",
-    "",
-    includeIfExists(".meta/ci-last.txt", "// Нет .meta/ci-last.txt"),
-    includeIfExists(".meta/sw-errors.txt", "// Нет .meta/sw-errors.txt"),
-    includeIfExists(".meta/browser-errors.txt", "// Нет .meta/browser-errors.txt"),
-    "",
-  ].join("\n");
-  return hints;
-}
-
-function includeIfExists(rel, fallback) {
+// -------- Критичные логи --------
+function includeIfExists(rel) {
   const abs = path.join(ROOT, rel);
   try {
     if (fs.existsSync(abs)) {
-      return `// >>> ${rel}\n` + fs.readFileSync(abs, "utf8");
+      return `// >>> ${rel}\n` + fs.readFileSync(abs, "utf8") + "\n";
     }
   } catch {}
-  return fallback;
+  return "";
+}
+function criticalLogsBlock() {
+  const hints = [
+    "КРИТИЧНЫЕ ЛОГИ:",
+    "- .meta/ci-last.txt — краткая сводка последних прогонов CI (деплой, оптимизация изображений и т.п.).",
+    "- .meta/sw-errors.txt — критичные ошибки Service Worker (install/activate/fetch).",
+    "- .meta/browser-errors.txt — агрегированные ошибки браузера (window.onerror/unhandledrejection).",
+    "",
+  ].join("\n");
+  return hints
+    + includeIfExists(".meta/ci-last.txt")
+    + includeIfExists(".meta/sw-errors.txt")
+    + includeIfExists(".meta/browser-errors.txt");
 }
 
-// ---------- Сортировка файлов по приоритетам ----------
+// -------- Группировка файлов по приоритетам --------
 function filesByPriority() {
-  const all = listAllFiles();
+  const textFiles = listTextFilesOnly();
   return {
-    critical: all.filter(f => getPriority(f) === "critical"),
-    high:     all.filter(f => getPriority(f) === "high"),
-    medium:   all.filter(f => getPriority(f) === "medium"),
-    low:      all.filter(f => getPriority(f) === "low"),
+    critical: textFiles.filter(f => getPriority(f) === "critical"),
+    high:     textFiles.filter(f => getPriority(f) === "high"),
+    medium:   textFiles.filter(f => getPriority(f) === "medium"),
+    low:      textFiles.filter(f => getPriority(f) === "low"),
   };
 }
 
@@ -251,23 +276,25 @@ function fileBlock(rel) {
   ].join("\n");
 }
 
-function buildHeader() {
+function headerBlock() {
   const now = new Date().toISOString().replace("T"," ").slice(0,19) + " UTC";
   return [
     rulesBlock(),
     metaBlock(),
     "СТРУКТУРА ПРОЕКТА:",
-    buildTree(),
+    buildFullTree(),
     `Сгенерировано: ${now}`,
     ""
   ].join("\n");
 }
 
+// -------- Генераторы --------
 function generateFull() {
-  let out = buildHeader();
+  let out = headerBlock();
 
   const groups = filesByPriority();
   const order = ["critical","high","medium","low"];
+
   for (const lvl of order) {
     for (const rel of groups[lvl]) {
       out += fileBlock(rel);
@@ -279,27 +306,29 @@ function generateFull() {
 }
 
 function generateAdaptive() {
-  let out = buildHeader();
+  let out = headerBlock();
   let cur = countLines(out);
 
   const max = MAX_LINES;
   const groups = filesByPriority();
-  const order = ["critical","high","medium"]; // low для adaptive исключим чаще всего
+  const order = ["critical","high","medium"];
 
   for (const lvl of order) {
     for (const rel of groups[lvl]) {
       const block = fileBlock(rel);
       const L = countLines(block);
-      if (cur + L > max) return out + "\n// ... (truncate)\n";
+      if (cur + L > max) {
+        out += "\n// ... (truncate)\n";
+        return out;
+      }
       out += block; cur += L;
     }
   }
 
-  // Логи в adaptive — коротко
+  // Логи — коротко, если помещаются
   const logs = criticalLogsBlock();
   const Llogs = countLines(logs);
   if (cur + Llogs <= max) out += logs;
-
   return out;
 }
 
