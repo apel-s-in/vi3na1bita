@@ -718,7 +718,6 @@
 
     const fm = raw.formats || {};
     const formats = {
-      avif: toAbs(fm.avif || null),
       webp: toAbs(fm.webp || null),
       full: toAbs(fm.full || raw.src || null),
       thumb: toAbs(fm.thumb || null)
@@ -751,9 +750,7 @@
 
     // Картинка: сначала полностью загружаем, потом единожды подменяем DOM — без «мигания»
     const picture = document.createElement('picture');
-    if (item.formats?.avif) {
-      const s = document.createElement('source'); s.type = 'image/avif'; s.srcset = item.formats.avif; picture.appendChild(s);
-    }
+
     if (item.formats?.webp) {
       const s = document.createElement('source'); s.type = 'image/webp'; s.srcset = item.formats.webp; picture.appendChild(s);
     }
@@ -2844,8 +2841,13 @@
   function prefetchAudioLink(url, asType='audio') {
     if (!url) return;
     try {
-      const link = document.createElement('link'); link.rel = 'prefetch'; link.as = asType; link.href = url; link.crossOrigin = 'anonymous'; document.head.appendChild(link);
-      fetch(url).catch(()=>{});
+      const link = document.createElement('link');
+      link.rel = 'prefetch';
+      link.as = asType; // 'audio' | 'fetch'
+      link.href = url;
+      link.crossOrigin = 'anonymous';
+      document.head.appendChild(link);
+      // ВАЖНО: не делаем fetch(url) — это ест память (буферизует медиа).
     } catch(e) {}
   }
 
@@ -3565,7 +3567,6 @@ ${lines}
           if (Array.isArray(coverGalleryArr)) {
             coverGalleryArr.forEach(it => {
               if (it.type === 'img') {
-                if (it.formats?.avif) out.add(it.formats.avif);
                 if (it.formats?.webp) out.add(it.formats.webp);
                 if (it.formats?.full) out.add(it.formats.full);
                 if (it.src) out.add(it.src);
