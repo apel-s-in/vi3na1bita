@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-82727a6520305e4cbfbbe80156a97928fbd607d7.idx
-│   │       ├── pack-82727a6520305e4cbfbbe80156a97928fbd607d7.pack
-│   │       └── pack-82727a6520305e4cbfbbe80156a97928fbd607d7.rev
+│   │       ├── pack-8cdabc50ebf49fe70a8ccb714badf0a1be33e989.idx
+│   │       ├── pack-8cdabc50ebf49fe70a8ccb714badf0a1be33e989.pack
+│   │       └── pack-8cdabc50ebf49fe70a8ccb714badf0a1be33e989.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -262,7 +262,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 15:56:01 UTC
+Сгенерировано: 2025-11-06 16:36:52 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -472,7 +472,6 @@ concurrency:
 
 jobs:
   build:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
