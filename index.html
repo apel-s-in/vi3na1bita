@@ -589,7 +589,6 @@
   const ALBUMS_FALLBACK = [
     { key: 'mezhdu-zlom-i-dobrom', title: 'Между Злом и Добром (2025)', base: 'https://apel-s-in.github.io/vi3na1bita-mezhdu-zlom-i-dobrom/' },
     { key: 'golos-dushi',          title: 'Голос Души',                base: 'https://apel-s-in.github.io/vi3na1bita-golos-dushi/' },
-    { key: 'odnazhdi-v-skazke',    title: 'Однажды в сказке',          base: 'https://apel-s-in.github.io/vi3na1bita-odnazhdi-v-skazke/' },
     { key: 'krevetochka',          title: 'КРЕВЕツTOCHKA',             base: 'https://apel-s-in.github.io/krevetochka/' }
   ];
 
@@ -618,17 +617,23 @@
   }
 
   /* ====== Галерея — только index.json, мгновенный первый кадр ====== */
+  // Галереи доступны только локально в этом репозитории
   const CENTRAL_GALLERY_BASE = './albums/gallery/';
-  const CENTRAL_REQUIRE_INDEX = true;
-  const CENTRAL_GALLERY_OVERRIDES = {
+
+  // Жёсткая привязка альбом→центральная галерея
+  const ALBUM_GALLERY_MAP = {
     'krevetochka': '00',
-    '__favorites__': 'stars',
+    'mezhdu-zlom-i-dobrom': '01',
+    'golos-dushi': '02',
     '__reliz__': 'news'
+    // '__favorites__' — без галереи
   };
-  // Разрешённые id центральных галерей (существуют папки only: 00,01,02,news,stars)
-  const CENTRAL_ALLOWED_IDS = new Set(['00', '01', '02', 'news', 'stars']);
-  // Какие альбомы реально опубликованы (для warmup). Исключаем «Однажды в сказке».
-  const PUBLISHED_ALBUM_KEYS = new Set(['golos-dushi', 'mezhdu-zlom-i-dobrom', 'krevetochka']);
+
+  // Разрешённые id центральных галерей
+  const CENTRAL_ALLOWED_IDS = new Set(['00','01','02','news']);
+
+  // Опубликованные альбомы (для warmup), без «третьего»
+  const PUBLISHED_ALBUM_KEYS = new Set(['golos-dushi','mezhdu-zlom-i-dobrom','krevetochka']);
 
   let coverGalleryArr = [];
   let coverGalleryIdx = 0;
@@ -663,14 +668,10 @@
     } catch { return null; }
   }
   function centralIdForAlbumKey(albumKey) {
-    // Явные переопределения (krevetochka/news/stars)
-    if (CENTRAL_GALLERY_OVERRIDES[albumKey]) {
-      const id = CENTRAL_GALLERY_OVERRIDES[albumKey];
-      return CENTRAL_ALLOWED_IDS.has(id) ? id : null;
-    }
-    // Позиция в albums.json → "01","02",... но только если такая папка реально существует
-    const idByOrder = albumOrderIndexStr(albumKey);
-    return CENTRAL_ALLOWED_IDS.has(idByOrder) ? idByOrder : null;
+    if (!albumKey) return null;
+    if (albumKey === '__favorites__') return null; // избранное без галереи
+    const id = ALBUM_GALLERY_MAP[albumKey] || null;
+    return id && CENTRAL_ALLOWED_IDS.has(id) ? id : null;
   }
 
   function parseAspectFromFileName(url) {
@@ -938,7 +939,6 @@
   const ICON_KEY_ALIASES = {
     'golos-dushi': ['golos', 'golos-dushi'],
     'mezhdu-zlom-i-dobrom': ['mzid', 'mezhdu-zlom-i-dobrom'],
-    'odnazhdi-v-skazke': ['skazka', 'odnazhdi-v-skazke'],
     'krevetochka': ['krevetochka']
   };
   const ICON_TITLE_MAP = {
