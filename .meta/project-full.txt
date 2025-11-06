@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-c0e76d4622d6c5b4a52d0aceafbcfec24f0a0d27.idx
-│   │       ├── pack-c0e76d4622d6c5b4a52d0aceafbcfec24f0a0d27.pack
-│   │       └── pack-c0e76d4622d6c5b4a52d0aceafbcfec24f0a0d27.rev
+│   │       ├── pack-e480c73d7fa1f9855c8a52122dadd615c831aee6.idx
+│   │       ├── pack-e480c73d7fa1f9855c8a52122dadd615c831aee6.pack
+│   │       └── pack-e480c73d7fa1f9855c8a52122dadd615c831aee6.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -261,7 +261,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 20:40:09 UTC
+Сгенерировано: 2025-11-06 20:42:52 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1896,7 +1896,6 @@ generateIndex();
 
     const fm = raw.formats || {};
     const formats = {
-      avif: toAbs(fm.avif || null),
       webp: toAbs(fm.webp || null),
       full: toAbs(fm.full || raw.src || null),
       thumb: toAbs(fm.thumb || null)
@@ -1929,9 +1928,7 @@ generateIndex();
 
     // Картинка: сначала полностью загружаем, потом единожды подменяем DOM — без «мигания»
     const picture = document.createElement('picture');
-    if (item.formats?.avif) {
-      const s = document.createElement('source'); s.type = 'image/avif'; s.srcset = item.formats.avif; picture.appendChild(s);
-    }
+
     if (item.formats?.webp) {
       const s = document.createElement('source'); s.type = 'image/webp'; s.srcset = item.formats.webp; picture.appendChild(s);
     }
@@ -4022,8 +4019,13 @@ generateIndex();
   function prefetchAudioLink(url, asType='audio') {
     if (!url) return;
     try {
-      const link = document.createElement('link'); link.rel = 'prefetch'; link.as = asType; link.href = url; link.crossOrigin = 'anonymous'; document.head.appendChild(link);
-      fetch(url).catch(()=>{});
+      const link = document.createElement('link');
+      link.rel = 'prefetch';
+      link.as = asType; // 'audio' | 'fetch'
+      link.href = url;
+      link.crossOrigin = 'anonymous';
+      document.head.appendChild(link);
+      // ВАЖНО: не делаем fetch(url) — это ест память (буферизует медиа).
     } catch(e) {}
   }
 
@@ -4743,7 +4745,6 @@ ${lines}
           if (Array.isArray(coverGalleryArr)) {
             coverGalleryArr.forEach(it => {
               if (it.type === 'img') {
-                if (it.formats?.avif) out.add(it.formats.avif);
                 if (it.formats?.webp) out.add(it.formats.webp);
                 if (it.formats?.full) out.add(it.formats.full);
                 if (it.src) out.add(it.src);
@@ -6252,8 +6253,8 @@ try { main(); } catch (e) { console.error("❌", e); process.exit(1); }
 // FILE: /.meta/ci-last.txt
 CI SUMMARY
 Repo: apel-s-in/vi3na1bita
-Workflow: Deploy to GitHub Pages
-Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19148303950
-Time: 2025-11-06 20:04:54 UTC
+Workflow: Optimize Images and Build Gallery Index
+Status: failure
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19149205111
+Time: 2025-11-06 20:41:15 UTC
 
