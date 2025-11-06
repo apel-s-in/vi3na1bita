@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-8cdabc50ebf49fe70a8ccb714badf0a1be33e989.idx
-│   │       ├── pack-8cdabc50ebf49fe70a8ccb714badf0a1be33e989.pack
-│   │       └── pack-8cdabc50ebf49fe70a8ccb714badf0a1be33e989.rev
+│   │       ├── pack-786847579c9ae2f080de08d9011e71d8a7f758aa.idx
+│   │       ├── pack-786847579c9ae2f080de08d9011e71d8a7f758aa.pack
+│   │       └── pack-786847579c9ae2f080de08d9011e71d8a7f758aa.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -262,7 +262,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 16:36:52 UTC
+Сгенерировано: 2025-11-06 16:39:33 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -4707,7 +4707,6 @@ const CORE_ASSETS = [
   './img/logo.png',
   './img/star.png',
   './img/star2.png',
-  './icons/favicon.svg',
   './icons/favicon-16.png',
   './icons/favicon-32.png',
   './icons/apple-touch-icon.png'
