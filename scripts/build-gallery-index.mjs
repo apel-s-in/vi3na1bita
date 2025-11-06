@@ -10,7 +10,7 @@ import sharp from 'sharp';
 const ROOT = path.resolve(process.cwd());
 const GALLERY_ROOT = path.join(ROOT, 'albums', 'gallery');
 
-const IMG_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
+const IMG_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']); // AVIF убран
 const HTML_EXT = new Set(['.html', '.htm']);
 const THUMBS_DIR = 'thumbs';
 const THUMB_WIDTH = 480;
@@ -35,7 +35,6 @@ async function convertIfMissing(srcPath, targetPath, fmt) {
   try {
     const image = sharp(srcPath);
     if (fmt === 'webp')      await image.webp({ quality: 80 }).toFile(targetPath);
-    else if (fmt === 'avif') await image.avif({ quality: 60, effort: 4 }).toFile(targetPath);
     else if (fmt === 'thumb')await image.resize({ width: THUMB_WIDTH, withoutEnlargement: true }).jpeg({ quality: 80 }).toFile(targetPath);
     return true;
   } catch (e) {
@@ -51,11 +50,10 @@ function toFormats(baseDir, fileName) {
   const fullAbs = path.join(baseDir, `${nameNoExt}${ext}`);
   const full = asRel(fullAbs);
   const webp = asRel(path.join(baseDir, `${nameNoExt}.webp`));
-  const avif = asRel(path.join(baseDir, `${nameNoExt}.avif`));
   const dirThumbs = path.join(baseDir, THUMBS_DIR);
   const thumbAbs = path.join(dirThumbs, `${nameNoExt}-thumb.jpg`);
   const thumb = asRel(thumbAbs);
-  return { fullAbs, full, webp, avif, thumbAbs, dirThumbs };
+  return { fullAbs, full, webp, thumbAbs, dirThumbs };
 }
 
 async function processGalleryDir(absDir) {
@@ -93,14 +91,14 @@ async function processGalleryDir(absDir) {
     if (!fm) continue;
 
     await ensureDir(fm.dirThumbs);
-    // Генерим недостающие производные только по выбранному исходнику
+    // Производные: только WebP и превью
     await convertIfMissing(fm.fullAbs, path.join(absDir, `${base}.webp`), 'webp');
-    await convertIfMissing(fm.fullAbs, path.join(absDir, `${base}.avif`), 'avif');
     await convertIfMissing(fm.fullAbs, fm.thumbAbs, 'thumb');
 
     const meta = await getImageMeta(fm.fullAbs);
+    // Полноразмер для показа — WebP; 'full' = webp
     items.push({
-      formats: { full: fm.full, webp: fm.webp, avif: fm.avif, thumb: fm.thumb },
+      formats: { full: fm.webp, webp: fm.webp, thumb: fm.thumb },
       width: meta.width, height: meta.height, size: meta.size
     });
   }
