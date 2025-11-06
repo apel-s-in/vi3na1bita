@@ -3,9 +3,17 @@ name: Optimize Images and Build Gallery Index
 on:
   push:
     branches: [ main, master ]
-    # чтобы не запускаться от собственного авто-коммита .meta и не зациклиться
-    paths-ignore:
-      - '.meta/**'
+    # Запускаемся только при изменении изображений/галереи/скриптов генерации
+    paths:
+      - 'albums/gallery/**.jpg'
+      - 'albums/gallery/**.jpeg'
+      - 'albums/gallery/**.png'
+      - 'albums/gallery/**.webp'
+      - 'albums/gallery/**.avif'
+      - 'albums/gallery/**/thumbs/**'
+      - 'scripts/build-gallery-index.mjs'
+      - 'generate-context.js'
+      - '.github/workflows/images.yml'
   workflow_dispatch:
 
 permissions:
