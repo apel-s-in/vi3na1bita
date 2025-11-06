@@ -64,7 +64,7 @@ async function generateIndex() {
           if (files.includes(`${basename}.webp`)) {
             formats.webp = `${basename}.webp`;
           }
-          if (fs.existsSync(thumbPath)) {
+          if (existsSyncSafely(thumbPath)) {
             formats.thumb = `thumbs/${basename}-thumb.jpg`;
           }
           // Формат 'full' всегда указывает на исходный файл
