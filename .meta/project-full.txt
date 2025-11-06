@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-14409c0c9e47ba390daea32d26d1d54d851acc7b.idx
-│   │       ├── pack-14409c0c9e47ba390daea32d26d1d54d851acc7b.pack
-│   │       └── pack-14409c0c9e47ba390daea32d26d1d54d851acc7b.rev
+│   │       ├── pack-42efbbead9d7c72985622a8fe9e719cb15e7fca5.idx
+│   │       ├── pack-42efbbead9d7c72985622a8fe9e719cb15e7fca5.pack
+│   │       └── pack-42efbbead9d7c72985622a8fe9e719cb15e7fca5.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -262,7 +262,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 18:01:44 UTC
+Сгенерировано: 2025-11-06 18:02:28 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -363,9 +363,17 @@ name: Optimize Images and Build Gallery Index
 on:
   push:
     branches: [ main, master ]
-    # чтобы не запускаться от собственного авто-коммита .meta и не зациклиться
-    paths-ignore:
-      - '.meta/**'
+    # Запускаемся только при изменении изображений/галереи/скриптов генерации
+    paths:
+      - 'albums/gallery/**.jpg'
+      - 'albums/gallery/**.jpeg'
+      - 'albums/gallery/**.png'
+      - 'albums/gallery/**.webp'
+      - 'albums/gallery/**.avif'
+      - 'albums/gallery/**/thumbs/**'
+      - 'scripts/build-gallery-index.mjs'
+      - 'generate-context.js'
+      - '.github/workflows/images.yml'
   workflow_dispatch:
 
 permissions:
