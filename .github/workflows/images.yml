@@ -32,6 +32,25 @@ jobs:
         run: |
           touch .nojekyll
 
+      - name: Detect changed images
+        id: diff
+        run: |
+          set -e
+          git fetch --no-tags --prune --depth=2 origin +${GITHUB_REF}:${GITHUB_REF} || true
+          FROM=$(git rev-parse HEAD~1 || echo "")
+          if [ -z "$FROM" ]; then
+            echo "has_images=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          CHANGED=$(git diff --name-only "$FROM"...HEAD -- 'albums/gallery/**/*.jpg' 'albums/gallery/**/*.jpeg' 'albums/gallery/**/*.png' 'albums/gallery/**/*.webp' 'albums/gallery/**/*.avif' || true)
+          if [ -n "$CHANGED" ]; then
+            echo "has_images=true" >> $GITHUB_OUTPUT
+            printf "%s\n" $CHANGED > .changed-images.txt
+            echo "changed_count=$(wc -l < .changed-images.txt)" >> $GITHUB_OUTPUT
+          else
+            echo "has_images=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Install tools (jpegoptim, optipng, webp, ImageMagick, Node)
         run: |
           sudo apt-get update
@@ -41,48 +60,51 @@ jobs:
           node --version
           npm --version
 
-      - name: Optimize JPEG & PNG (albums/gallery only)
+      - name: Optimize JPEG & PNG (changed only)
+        if: steps.diff.outputs.has_images == 'true'
         run: |
-          # JPEG
-          find albums/gallery -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) -print0 | \
-            xargs -0 -I {} bash -c 'jpegoptim --strip-all --all-progressive "{}" || true'
-          # PNG
-          find albums/gallery -type f -iname "*.png" -print0 | \
-            xargs -0 -I {} bash -c 'optipng -o7 -strip all "{}" || true'
+          set -e
+          while read -r file; do
+            case "$file" in
+              *.jpg|*.jpeg) jpegoptim --strip-all --all-progressive "$file" || true ;;
+              *.png) optipng -o7 -strip all "$file" || true ;;
+            esac
+          done < .changed-images.txt
 
-      - name: Generate WebP
+      - name: Generate WebP (changed only)
+        if: steps.diff.outputs.has_images == 'true'
         run: |
-          find albums/gallery -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \) | while read img; do
-            webp="${img%.*}.webp"
-            if [ ! -f "$webp" ]; then
-              cwebp -q 85 "$img" -o "$webp" || true
-            fi
-          done
+          set -e
+          while read -r img; do
+            case "$img" in
+              *.jpg|*.jpeg|*.png)
+                webp="${img%.*}.webp"
+                if [ ! -f "$webp" ]; then cwebp -q 85 "$img" -o "$webp" || true; fi
+                ;;
+            esac
+          done < .changed-images.txt
 
-      - name: Generate thumbnails (300x300)
+      - name: Generate thumbnails (changed only, 300x300)
+        if: steps.diff.outputs.has_images == 'true'
         run: |
-          shopt -s nullglob
-          for album_dir in albums/gallery/*/; do
-            [ -d "$album_dir" ] || continue
-            mkdir -p "${album_dir}thumbs"
-            for img in "${album_dir}"*.jpg "${album_dir}"*.jpeg "${album_dir}"*.png; do
-              [ -f "$img" ] || continue
-              filename="$(basename "$img")"
-              name="${filename%.*}"
-              thumb_path="${album_dir}thumbs/${name}-thumb.jpg"
-              if [ ! -f "$thumb_path" ]; then
-                convert "$img" -resize 300x300 -quality 85 "$thumb_path" || true
-              fi
-            done
-          done
+          set -e
+          while read -r img; do
+            case "$img" in
+              albums/gallery/*/*.jpg|albums/gallery/*/*.jpeg|albums/gallery/*/*.png)
+                album_dir="$(dirname "$img")/"
+                filename="$(basename "$img")"
+                name="${filename%.*}"
+                mkdir -p "${album_dir}thumbs"
+                thumb_path="${album_dir}thumbs/${name}-thumb.jpg"
+                if [ ! -f "$thumb_path" ]; then
+                  convert "$img" -resize 300x300 -quality 85 "$thumb_path" || true
+                fi
+                ;;
+            esac
+          done < .changed-images.txt
 
-      - name: Build gallery index (optional)
-        run: |
-          if [ -f generate-index.js ]; then
-            node generate-index.js || true
-          else
-            echo "generate-index.js not found, skip"
-          fi
+      - name: Build gallery index (skip; используем scripts/build-gallery-index.mjs в pages.yml)
+        run: echo "skip local generate-index.js to avoid duplicates"
 
       - name: Generate .meta context
         run: |
