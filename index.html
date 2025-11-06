@@ -665,29 +665,45 @@
     return 1;
   }
 
-  /* Нормализация элемента из index.json */
+  /* Нормализация элемента из index.json
+     ВАЖНО: если путь уже «корневой» для сайта (albums/, img/, icons/, assets/),
+     НЕ префиксуем его baseDir — иначе получим дубли и 404. */
   function normalizeGalleryItem(raw, baseDir) {
     if (!raw) return null;
+
+    const toAbs = (p) => {
+      if (!p) return null;
+      const s = String(p).replace(/^\.?\//, '');
+      if (/^https?:\/\//i.test(s)) return s;
+      // Уже «корневой» для сайта — используем как есть (с ./)
+      if (/^(albums|img|icons|assets)\//i.test(s)) return `./${s}`;
+      // Иначе — относительно каталога галереи
+      return baseDir + s;
+    };
+
     if (typeof raw === 'string') {
       const isHtml = /\.html(\?|#|$)/i.test(raw);
-      const src = raw.match(/^https?:\/\//i) ? raw : (baseDir + String(raw).replace(/^\.?\//,''));
+      const src = toAbs(raw);
       return { type: isHtml ? 'html' : 'img', src, formats: null, ar: parseAspectFromFileName(src) || 1 };
     }
+
     const type = (String(raw.type || '').toLowerCase() === 'html') ? 'html' : 'img';
     if (type === 'html') {
-      const src = raw.src?.match(/^https?:\/\//i) ? raw.src : (baseDir + String(raw.src||'').replace(/^\.?\//,''));
+      const src = toAbs(raw.src || '');
       return { type: 'html', src, formats: null, ar: 1 };
     }
+
     const fm = raw.formats || {};
-    const makeAbs = (p) => p ? (p.match(/^https?:\/\//i) ? p : (baseDir + String(p).replace(/^\.?\//,''))) : null;
     const formats = {
-      avif: makeAbs(fm.avif || null),
-      webp: makeAbs(fm.webp || null),
-      full: makeAbs(fm.full || raw.src || null),
-      thumb: makeAbs(fm.thumb || null)
+      avif: toAbs(fm.avif || null),
+      webp: toAbs(fm.webp || null),
+      full: toAbs(fm.full || raw.src || null),
+      thumb: toAbs(fm.thumb || null)
     };
-    const src = formats.full || makeAbs(raw.src || '');
-    const ar = (raw.width && raw.height && raw.width > 0 && raw.height > 0) ? (raw.width / raw.height) : (parseAspectFromFileName(src) || 1);
+    const src = formats.full || toAbs(raw.src || '');
+    const ar = (raw.width && raw.height && raw.width > 0 && raw.height > 0)
+      ? (raw.width / raw.height)
+      : (parseAspectFromFileName(src) || 1);
     return { type: 'img', src, formats, ar };
   }
 
@@ -1605,18 +1621,47 @@
         fulltext: tr.fulltext || null,
         __a: ref.a,
         __t: ref.t,
-        __artist: cfg.artist || 'Витрина Разбита',
-        __album: cfg.albumName || 'Альбом',
+        __artist: cfg?.artist || 'Витрина Разбита',
+        __album: cfg?.albumName || 'Альбом',
         __active: active
       });
     }
     favoritesRefsModel = out;
     return out;
   }
+
   function updateFavoritesRefsModelActiveFlag(albumKey, trackIndex, isActive) {
     if (!Array.isArray(favoritesRefsModel)) return;
     const item = favoritesRefsModel.find(x => x.__a === albumKey && x.__t === trackIndex);
     if (item) item.__active = !!isActive;
+  }
+
+  // ИНИЦИАЛИЗАЦИЯ ВОСПРОИЗВЕДЕНИЯ ДЛЯ «ИЗБРАННОГО»
+  async function ensureFavoritesPlayback(index) {
+    // Подготовим модель если пусто
+    if (!Array.isArray(favoritesRefsModel) || favoritesRefsModel.length === 0) {
+      await buildFavoritesRefsModel();
+    }
+    // Переключаемся в контекст «Избранное»
+    playingAlbumKey = SPECIAL_FAVORITES_KEY;
+    playingTracks = (favoritesRefsModel || []).map(it => ({
+      title: it.title,
+      audio: it.audio,
+      lyrics: it.lyrics,
+      fulltext: it.fulltext || null
+    }));
+    playingArtist = 'Витрина Разбита';
+    playingAlbumName = 'Избранное';
+    playingCover = 'img/logo.png';
+
+    updateAvailableTracks();
+
+    let idx = Number(index);
+    if (!Number.isInteger(idx) || idx < 0 || idx >= (playingTracks?.length || 0)) {
+      idx = 0;
+    }
+    // Запускаем воспроизведение выбранного
+    playFromPlaybackAlbum(idx, true);
   }
 
   /* Список треков */
