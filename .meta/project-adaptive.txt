@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-48594a667098a34de36cd1234b7ca9ccba46b73d.idx
-│   │       ├── pack-48594a667098a34de36cd1234b7ca9ccba46b73d.pack
-│   │       └── pack-48594a667098a34de36cd1234b7ca9ccba46b73d.rev
+│   │       ├── pack-ec021089013740b10190733ce5f1827c9c51f19c.idx
+│   │       ├── pack-ec021089013740b10190733ce5f1827c9c51f19c.pack
+│   │       └── pack-ec021089013740b10190733ce5f1827c9c51f19c.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -262,7 +262,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 17:29:20 UTC
+Сгенерировано: 2025-11-06 18:00:34 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1296,6 +1296,14 @@ generateIndex();
     .track { display: flex; align-items: center; padding: 7px 8px; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background 0.13s; background: none; }
     .track:hover { background: rgba(255,255,255,0.05); }
     .track.current { background: #232b38; }
+    /* Мини‑строка под мини‑плеер (когда листаем другой альбом) */
+    .mini-now {
+      display:flex; align-items:center; gap:8px;
+      padding: 6px 8px; border-radius: 8px;
+      background: #232b38; margin-bottom: 6px;
+    }
+    .mini-now .tnum { color:#8ab8fd; min-width:27px; }
+    .mini-now .track-title { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .tnum { min-width: 27px; color: #8ab8fd; }
     .track-title { margin-left: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
     .like-star { margin-left: auto; width: 19px; height: 19px; cursor: pointer; opacity: 0.97; border: none; background: none; padding: 0; appearance: none; display: inline-block; transition: transform 0.2s, filter 0.13s, opacity 0.13s; }
@@ -1971,10 +1979,22 @@ generateIndex();
       if (!r.ok) return [];
       const j = await r.json();
       const arr = Array.isArray(j.items) ? j.items : (Array.isArray(j) ? j : []);
-      const out = [];
+      const tmp = [];
       for (const raw of arr) {
         const norm = normalizeGalleryItem(raw, baseDir);
-        if (norm) out.push(norm);
+        if (norm) tmp.push(norm);
+      }
+      // Дедуп по базовому имени (без расширения) — оставляем один логический кадр
+      const pickKey = (item) => {
+        const url = (item.formats?.full || item.src || '').split('?')[0];
+        const name = url.split('/').pop() || '';
+        return name.replace(/\.(avif|webp|jpe?g|png)$/i, '').replace(/-thumb$/i, '');
+      };
+      const seen = new Set();
+      const out = [];
+      for (const it of tmp) {
+        const k = pickKey(it);
+        if (k && !seen.has(k)) { seen.add(k); out.push(it); }
       }
       return out;
     } catch { return []; }
@@ -3626,19 +3646,24 @@ generateIndex();
     }
     if (!playingAlbumKey || currentAlbumKey === playingAlbumKey) return;
 
-    // Подсветка строки: заранее синхронизируем currentTrack с playingTrack,
-    // чтобы buildTrackList выделил правильную строку
+    // 1) Задаём курсор до загрузки
     currentTrack = (typeof playingTrack === 'number' && playingTrack >= 0) ? playingTrack : -1;
 
     const sel = document.getElementById('album-select');
     if (sel) sel.value = playingAlbumKey;
     await loadAlbumByKey(playingAlbumKey);
 
-    // После загрузки аккуратно скроллим к нужной строке
+    // 2) Переносим блок плеера непосредственно под нужную строку
     setTimeout(() => {
       const row = document.getElementById(`trk${playingTrack}`);
+      const lp = document.getElementById('lyricsplayerblock');
+      if (row && lp) {
+        if (row.nextSibling) row.parentNode.insertBefore(lp, row.nextSibling);
+        else row.parentNode.appendChild(lp);
+      }
+      // 3) Скроллим к строке
       if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 250);
+    }, 200);
   }
   function attachPlaybackStateListeners() {
     const a = document.getElementById('audio');
@@ -4349,10 +4374,33 @@ ${lines}
     modal.classList.add('active');
 
     const applyWidthByText = (text) => {
-      const lines = String(text || '').split(/\r?\n/);
-      const maxCh = Math.max(32, Math.min(72, lines.reduce((m, s) => Math.max(m, s.length), 0)));
       const modalEl = document.querySelector('#lyrics-text-modal .lyrics-modal');
-      if (modalEl) modalEl.style.setProperty('--lyrics-modal-ch', String(maxCh));
+      const preEl = document.getElementById('lyrics-modal-pre');
+      if (!modalEl || !preEl) return;
+      const css = getComputedStyle(preEl);
+      const font = `${css.fontStyle} ${css.fontVariant} ${css.fontWeight} ${css.fontSize} / ${css.lineHeight} ${css.fontFamily}`;
+      const lines = String(text || '').split(/\r?\n/);
+
+      // Точное измерение пикселей
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      ctx.font = font;
+      let maxPx = 0;
+      for (const line of lines) {
+        const w = ctx.measureText(line).width;
+        if (w > maxPx) maxPx = w;
+      }
+      // Добавляем внутренние паддинги и рамки
+      const sidePad = 48; // паддинги+бордеры/скроллбар
+      const desired = Math.ceil(maxPx + sidePad);
+      const maxAllowed = Math.min(window.innerWidth * 0.96, 960);
+      const finalPx = Math.max(320, Math.min(desired, maxAllowed));
+
+      modalEl.style.width = `${finalPx}px`;
+      modalEl.style.maxWidth = `${finalPx}px`;
+      // На всякий — убираем горизонтальный скролл
+      const scroll = modalEl.querySelector('.lyrics-modal-scroll');
+      if (scroll) scroll.style.overflowX = 'hidden';
     };
 
     if (tr.fulltext) {
