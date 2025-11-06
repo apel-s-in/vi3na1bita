@@ -6,12 +6,13 @@
  * Структура:
  * 1) ПРАВИЛА ДЛЯ НЕЙРОСЕТЕЙ
  * 2) МЕТА: имя/URL репозитория, «проект делается средствами GitHub»
- * 3) СТРУКТУРА ПРОЕКТА — полное дерево, НО исключаем .git/**, .meta/**, assets/**
- * 4) ФАЙЛЫ — только текстовые, по приоритету. Каждый:
+ * 3) СТРУКТУРА ПРОЕКТА — полное дерево (НО исключаем .git/**, .meta/**, assets/**)
+ * 4) ФАЙЛЫ — только текстовые (html/js/ts/css/json/yml/md/…), по приоритету. Каждый:
  *    //=================================================
  *    // FILE: /путь
  *    <полный код без сокращений>
- * 5) КРИТИЧНЫЕ ЛОГИ — подключаем .meta/ci-last.txt, sw-errors.txt, browser-errors.txt, если есть
+ *
+ * ВАЖНО: нет блока «Критичные логи». НИКОГДА не включаем сами project-full.txt/adaptive.txt.
  *
  * Запуск:
  *   node generate-context.js --mode=both --max-lines=20000
@@ -20,6 +21,7 @@
 const fs = require("fs");
 const path = require("path");
 
+// CLI
 const argv = Object.fromEntries(
   process.argv.slice(2).map(a => {
     const [k, ...r] = a.replace(/^--/,"").split("=");
@@ -36,14 +38,18 @@ if (!fs.existsSync(META_DIR)) fs.mkdirSync(META_DIR, { recursive: true });
 const FULL_FILE = path.join(META_DIR, "project-full.txt");
 const ADAPTIVE_FILE = path.join(META_DIR, "project-adaptive.txt");
 
-// Текстовые файлы, которые включаем в секцию «ФАЙЛЫ»
+// Относительные пути к self-файлам (для дополнительной страховки)
+const SELF_FULL_REL = toUnix(path.relative(ROOT, FULL_FILE));
+const SELF_ADAPT_REL = toUnix(path.relative(ROOT, ADAPTIVE_FILE));
+
+// Текстовые расширения, код которых включаем в «ФАЙЛЫ»
 const TEXT_EXTS = new Set([
   ".html",".htm",".css",".js",".mjs",".cjs",".ts",".tsx",
   ".json",".webmanifest",".md",".txt",".yml",".yaml"
 ]);
 
-// Исключения для Дерева и для списка файлов-кода:
-// ВАЖНО: по вашему требованию исключаем .meta/** и assets/**
+// Исключения для дерева и списка файлов.
+// По требованию исключаем .meta/** и assets/** (и служебные).
 const EXCLUDE_PATTERNS = [
   "node_modules/**",
   ".git/**",
@@ -54,6 +60,7 @@ const EXCLUDE_PATTERNS = [
   "**/*.log",".DS_Store"
 ].map(globToRegExp);
 
+// Приоритеты для сортировки текстовых файлов в секции «ФАЙЛЫ»
 const PRIORITY = {
   critical: [
     /^index\.html?$/i,
@@ -87,8 +94,15 @@ function globToRegExp(pat) {
     .replace(/___GLOBSTAR___/g,".*");
   return new RegExp("^" + esc + "$");
 }
-const toUnix = p => p.replace(/\\/g,"/");
-function isExcluded(rel) { return EXCLUDE_PATTERNS.some(re => re.test(toUnix(rel))); }
+function toUnix(p) { return String(p).replace(/\\/g,"/"); }
+
+function isExcluded(rel) {
+  const u = toUnix(rel);
+  if (!u) return true;
+  // Жёсткий запрет самовключения результирующих файлов (доп. защита):
+  if (u === SELF_FULL_REL || u === SELF_ADAPT_REL) return true;
+  return EXCLUDE_PATTERNS.some(re => re.test(u));
+}
 function isTextFile(rel) { return TEXT_EXTS.has(path.extname(rel).toLowerCase()); }
 
 // ---------- scan ----------
@@ -119,8 +133,11 @@ function listTextFiles() {
 }
 
 // ---------- io ----------
-function read(rel) { try { return fs.readFileSync(path.join(ROOT, rel), "utf8"); } catch (e) { return `// read error: ${e.message}`; } }
-function lines(s){ return (s.match(/\n/g)||[]).length + (s.length?1:0); }
+function read(rel) {
+  try { return fs.readFileSync(path.join(ROOT, rel), "utf8"); }
+  catch (e) { return `// read error: ${e.message}`; }
+}
+function countLines(s){ return (s.match(/\n/g)||[]).length + (s.length?1:0); }
 
 // ---------- meta ----------
 function repoMeta() {
@@ -179,8 +196,8 @@ function metaBlock() {
   ].join("\n");
 }
 function buildTreeFull() {
-  const linesArr = [];
-  linesArr.push(path.basename(ROOT) + "/");
+  const lines = [];
+  lines.push(path.basename(ROOT) + "/");
   function walk(dir, prefix = "") {
     let entries = [];
     try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
@@ -189,33 +206,13 @@ function buildTreeFull() {
       .sort((a,b)=> (a.isDirectory()!==b.isDirectory()? (a.isDirectory()?-1:1) : a.name.localeCompare(b.name)));
     visible.forEach((e, idx) => {
       const isLast = idx === visible.length - 1;
-      const branch = (isLast ? "└── " : "├── ");
-      linesArr.push(prefix + branch + e.name + (e.isDirectory()? "/" : ""));
-      if (e.isDirectory()) {
-        walk(path.join(dir, e.name), prefix + (isLast ? "    " : "│   "));
-      }
+      const branch = isLast ? "└── " : "├── ";
+      lines.push(prefix + branch + e.name + (e.isDirectory()? "/" : ""));
+      if (e.isDirectory()) walk(path.join(dir, e.name), prefix + (isLast ? "    " : "│   "));
     });
   }
   walk(ROOT);
-  return linesArr.join("\n") + "\n\n";
-}
-function includeIfExists(rel) {
-  const abs = path.join(ROOT, rel);
-  try { if (fs.existsSync(abs)) return `// >>> ${rel}\n${fs.readFileSync(abs,"utf8")}\n`; } catch {}
-  return "";
-}
-function criticalLogsBlock() {
-  const head = [
-    "КРИТИЧНЫЕ ЛОГИ:",
-    "- .meta/ci-last.txt — краткая сводка последних прогонов CI.",
-    "- .meta/sw-errors.txt — критичные ошибки Service Worker.",
-    "- .meta/browser-errors.txt — ошибки браузера (window.onerror/unhandledrejection).",
-    ""
-  ].join("\n");
-  return head
-    + includeIfExists(".meta/ci-last.txt")
-    + includeIfExists(".meta/sw-errors.txt")
-    + includeIfExists(".meta/browser-errors.txt");
+  return lines.join("\n") + "\n\n";
 }
 
 // ---------- files ----------
@@ -242,34 +239,48 @@ function fileBlock(rel) {
   ].join("\n");
 }
 
-// ---------- build ----------
+// ---------- header ----------
 function headerBlock() {
   const now = new Date().toISOString().replace("T"," ").slice(0,19) + " UTC";
-  return [ rulesBlock(), metaBlock(), "СТРУКТУРА ПРОЕКТА:", buildTreeFull(), `Сгенерировано: ${now}`, "" ].join("\n");
+  return [
+    rulesBlock(),
+    metaBlock(),
+    "СТРУКТУРА ПРОЕКТА:",
+    buildTreeFull(),
+    `Сгенерировано: ${now}`,
+    ""
+  ].join("\n");
 }
+
+// ---------- generators ----------
 function generateFull() {
   let out = headerBlock();
   const groups = filesByPriority();
-  for (const lvl of ["critical","high","medium","low"]) for (const f of groups[lvl]) out += fileBlock(f);
-  out += criticalLogsBlock();
-  return out;
+  for (const lvl of ["critical","high","medium","low"]) {
+    for (const f of groups[lvl]) out += fileBlock(f);
+  }
+  return out; // БЕЗ блока «критичные логи»
 }
 function generateAdaptive() {
   let out = headerBlock();
-  let cur = lines(out);
+  let cur = countLines(out);
   const max = MAX_LINES;
   const groups = filesByPriority();
+
   for (const lvl of ["critical","high","medium"]) {
     for (const f of groups[lvl]) {
-      const block = fileBlock(f), L = lines(block);
-      if (cur + L > max) { out += "\n// ... (truncate)\n"; return out; }
+      const block = fileBlock(f);
+      const L = countLines(block);
+      if (cur + L > max) {
+        out += "\n// ... (truncate)\n";
+        return out;
+      }
       out += block; cur += L;
     }
   }
-  const logs = criticalLogsBlock(), Llogs = lines(logs);
-  if (cur + Llogs <= max) out += logs;
-  return out;
+  return out; // БЕЗ блока «критичные логи»
 }
+
 function main() {
   if (MODE === "full" || MODE === "both") {
     fs.writeFileSync(FULL_FILE, generateFull(), "utf8");
@@ -280,4 +291,5 @@ function main() {
     console.log(`✅ ${ADAPTIVE_FILE}`);
   }
 }
+
 try { main(); } catch (e) { console.error("❌", e); process.exit(1); }
