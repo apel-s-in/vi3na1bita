@@ -1,0 +1,47 @@
+name: Collect critical CI logs
+
+on:
+  workflow_run:
+    workflows: [ "Deploy to GitHub Pages", "Optimize Images and Build Gallery Index" ]
+    types: [ completed ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Write short CI summary to .meta/ci-last.txt
+        env:
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          EVENT_NAME: ${{ github.event.workflow_run.name }}
+          EVENT_STATUS: ${{ github.event.workflow_run.conclusion }}
+          EVENT_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          mkdir -p .meta
+          {
+            echo "CI SUMMARY"
+            echo "Repo: ${REPO}"
+            echo "Workflow: ${EVENT_NAME}"
+            echo "Status: ${EVENT_STATUS}"
+            echo "URL: ${EVENT_URL}"
+            echo "Time: $(date -u +"%Y-%m-%d %H:%M:%S") UTC"
+          } > .meta/ci-last.txt
+          cat .meta/ci-last.txt
+
+      - name: Auto commit .meta/ci-last.txt
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "CI: update .meta/ci-last.txt"
+          file_pattern: ".meta/ci-last.txt"
+          branch: ${{ github.ref_name }}
+          commit_user_name: github-actions[bot]
+          commit_user_email: github-actions[bot]@users.noreply.github.com
