@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-44f60c53152a83fc42f208935ef9a6f08e139451.idx
-│   │       ├── pack-44f60c53152a83fc42f208935ef9a6f08e139451.pack
-│   │       └── pack-44f60c53152a83fc42f208935ef9a6f08e139451.rev
+│   │       ├── pack-8597f86b828b419ed4eb7ffb2a4be40f7a18a0ef.idx
+│   │       ├── pack-8597f86b828b419ed4eb7ffb2a4be40f7a18a0ef.pack
+│   │       └── pack-8597f86b828b419ed4eb7ffb2a4be40f7a18a0ef.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -262,7 +262,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 18:35:23 UTC
+Сгенерировано: 2025-11-06 19:22:39 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -555,11 +555,6 @@ jobs:
       "key": "golos-dushi",
       "title": "Голос Души",
       "base": "https://apel-s-in.github.io/vi3na1bita-golos-dushi/"
-    },
-    {
-      "key": "odnazhdi-v-skazke",
-      "title": "Однажды в сказке",
-      "base": "https://apel-s-in.github.io/vi3na1bita-odnazhdi-v-skazke/"
     },
     {
       "key": "krevetochka",
@@ -6190,8 +6185,8 @@ try { main(); } catch (e) { console.error("❌", e); process.exit(1); }
 // FILE: /.meta/ci-last.txt
 CI SUMMARY
 Repo: apel-s-in/vi3na1bita
-Workflow: Optimize Images and Build Gallery Index
-Status: failure
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19145156563
-Time: 2025-11-06 18:10:13 UTC
+Workflow: Deploy to GitHub Pages
+Status: success
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19146045109
+Time: 2025-11-06 18:35:53 UTC
 
