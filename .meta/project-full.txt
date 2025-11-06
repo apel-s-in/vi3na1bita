@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-48988644439af75ca73b5930e94b266314541cef.idx
-│   │       ├── pack-48988644439af75ca73b5930e94b266314541cef.pack
-│   │       └── pack-48988644439af75ca73b5930e94b266314541cef.rev
+│   │       ├── pack-48594a667098a34de36cd1234b7ca9ccba46b73d.idx
+│   │       ├── pack-48594a667098a34de36cd1234b7ca9ccba46b73d.pack
+│   │       └── pack-48594a667098a34de36cd1234b7ca9ccba46b73d.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -262,7 +262,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 16:54:00 UTC
+Сгенерировано: 2025-11-06 17:29:20 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1481,20 +1481,21 @@ generateIndex();
 
     /* Модалка текста песни */
     #lyrics-text-modal { z-index: 110; }
-    #lyrics-text-modal .lyrics-modal {
-      position: relative;
-      width: var(--lyrics-modal-width, 100vw);
-      max-width: var(--lyrics-modal-width, 100vw);
-      height: min(92vh, 820px);
-      background: var(--modal-bg);
-      border: 1px solid rgba(255,255,255,.1);
-      border-radius: 16px;
-      box-shadow: 0 10px 32px rgba(0,0,0,.6);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-      padding: 12px;
-    }
+      #lyrics-text-modal .lyrics-modal {
+          position: relative;
+          /* Ширина по самой длинной строке (в ch) + внутренние отступы, с ограничениями */
+          width: min( calc(var(--lyrics-modal-ch, 64) * 1ch + 48px), 96vw, 960px );
+          max-width: min( calc(var(--lyrics-modal-ch, 64) * 1ch + 48px), 96vw, 960px );
+          height: min(92vh, 820px);
+          background: var(--modal-bg);
+          border: 1px solid rgba(255,255,255,.1);
+          border-radius: 16px;
+          box-shadow: 0 10px 32px rgba(0,0,0,.6);
+          overflow: hidden;
+          display: flex;
+          flex-direction: column;
+          padding: 12px;
+        }
     @media (max-width: 600px) {
       #lyrics-text-modal .lyrics-modal { width: 100vw; max-width: 100vw; border-radius: 16px; }
     }
@@ -1867,18 +1868,20 @@ generateIndex();
     const wrap = document.getElementById('cover-wrap');
     if (!slot || !item) return;
     if (wrap && item.ar) wrap.style.aspectRatio = String(item.ar);
-    slot.innerHTML = '';
 
+    // HTML-баннер — подмена сразу (нет события onload для контента)
     if (item.type === 'html') {
       const ifr = document.createElement('iframe');
       ifr.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-forms');
       ifr.setAttribute('referrerpolicy', 'no-referrer');
       ifr.loading = 'lazy';
       ifr.src = item.src;
-      slot.appendChild(ifr);
+      // Мягкая замена без «чёрного» кадра
+      slot.replaceChildren(ifr);
       return;
     }
 
+    // Картинка: сначала полностью загружаем, потом единожды подменяем DOM — без «мигания»
     const picture = document.createElement('picture');
     if (item.formats?.avif) {
       const s = document.createElement('source'); s.type = 'image/avif'; s.srcset = item.formats.avif; picture.appendChild(s);
@@ -1891,9 +1894,21 @@ generateIndex();
     img.loading = 'eager';
     img.referrerPolicy = 'no-referrer';
     img.alt = 'Обложка альбома';
+    img.style.opacity = '0';
+    img.style.transition = 'opacity .2s ease';
+    img.onload = () => {
+      // подменяем за один раз; предыдущий кадр остаётся видимым до этого момента
+      picture.appendChild(img);
+      slot.replaceChildren(picture);
+      requestAnimationFrame(() => { img.style.opacity = '1'; });
+    };
+    img.onerror = () => {
+      // если ошибка — оставляем предыдущий кадр, но пробуем подменить напрямую
+      picture.appendChild(img);
+      slot.replaceChildren(picture);
+      img.style.opacity = '1';
+    };
     img.src = item.formats?.full || item.src;
-    picture.appendChild(img);
-    slot.appendChild(picture);
   }
 
   /* Быстрый вывод до сборки всей галереи */
@@ -2289,6 +2304,11 @@ generateIndex();
       if (signal.aborted) return;
       console.error('Не удалось загрузить config.json альбома:', e);
       NotificationSystem.error('Не удалось загрузить альбом');
+      // Если альбом «не вышел» — показываем заглушку
+      try {
+        const meta = albumByKey(key);
+        renderComingSoonPlaceholder(meta?.title || 'Альбом');
+      } catch {}
     } finally {
       setActiveAlbumIcon(currentAlbumKey);
       setCoverWrapVisible(__currentGalleryVisible);
@@ -2386,6 +2406,24 @@ generateIndex();
   function setCoverWrapVisible(visible){
     const cw = document.getElementById('cover-wrap');
     if (cw) cw.style.display = visible ? '' : 'none';
+  }
+
+  // Заглушка для ещё не вышедшего альбома (нет config.json)
+  function renderComingSoonPlaceholder(title){
+    try {
+      const slot = document.getElementById('cover-slot');
+      const list = document.getElementById('track-list');
+      if (slot) {
+        slot.replaceChildren();
+        const box = document.createElement('div');
+        box.style.cssText = 'display:flex;align-items:center;justify-content:center;width:100%;height:100%;background:#0f1219;color:#cfe3ff;font-weight:800;text-align:center;padding:16px;';
+        box.innerHTML = `<div><div style="font-size:18px;margin-bottom:6px;">Скоро релиз</div><div style="opacity:.85;">${(title||'Альбом')}</div></div>`;
+        slot.appendChild(box);
+      }
+      if (list) {
+        list.innerHTML = '<div style="text-align:center; opacity:.8; margin:10px 0;">Скоро релиз — треклист недоступен</div>';
+      }
+    } catch {}
   }
 
   /* «Новости» */
@@ -3251,15 +3289,29 @@ generateIndex();
     else { btn && btn.classList.remove('favorites-active'); if (icon) icon.src = 'img/star2.png'; NotificationSystem.info('Играют все треки'); }
     localStorage.setItem('favoritesOnlyMode', favoritesOnlyMode ? '1' : '0');
 
+    const list = document.getElementById('track-list');
+    const filterBtn = document.getElementById('filter-favorites-btn');
+
     if (viewMode === 'favorites') {
-      const list = document.getElementById('track-list');
-      const filterBtn = document.getElementById('filter-favorites-btn');
       favoritesFilterActive = favoritesOnlyMode;
       if (favoritesFilterActive) {
         filterBtn && filterBtn.classList.add('filtered');
         if (filterBtn) filterBtn.textContent = 'ПОКАЗАТЬ ВСЕ ПЕСНИ';
         list && list.classList.add('filtered');
         updateFavoriteClassesFavorites();
+      } else {
+        filterBtn && filterBtn.classList.remove('filtered');
+        if (filterBtn) filterBtn.textContent = 'Скрыть не отмеченные ⭐ песни';
+        list && list.classList.remove('filtered');
+      }
+    } else if (viewMode === 'album') {
+      // Новое: синхронизируем список текущего альбома с режимом «⭐»
+      favoritesFilterActive = favoritesOnlyMode;
+      if (favoritesFilterActive) {
+        filterBtn && filterBtn.classList.add('filtered');
+        if (filterBtn) filterBtn.textContent = 'ПОКАЗАТЬ ВСЕ ПЕСНИ';
+        list && list.classList.add('filtered');
+        updateFavoriteClasses();
       } else {
         filterBtn && filterBtn.classList.remove('filtered');
         if (filterBtn) filterBtn.textContent = 'Скрыть не отмеченные ⭐ песни';
@@ -3573,10 +3625,20 @@ generateIndex();
       return;
     }
     if (!playingAlbumKey || currentAlbumKey === playingAlbumKey) return;
+
+    // Подсветка строки: заранее синхронизируем currentTrack с playingTrack,
+    // чтобы buildTrackList выделил правильную строку
+    currentTrack = (typeof playingTrack === 'number' && playingTrack >= 0) ? playingTrack : -1;
+
     const sel = document.getElementById('album-select');
     if (sel) sel.value = playingAlbumKey;
     await loadAlbumByKey(playingAlbumKey);
-    setTimeout(() => { document.getElementById(`trk${currentTrack}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 250);
+
+    // После загрузки аккуратно скроллим к нужной строке
+    setTimeout(() => {
+      const row = document.getElementById(`trk${playingTrack}`);
+      if (row) row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 250);
   }
   function attachPlaybackStateListeners() {
     const a = document.getElementById('audio');
@@ -4286,14 +4348,26 @@ ${lines}
 
     modal.classList.add('active');
 
+    const applyWidthByText = (text) => {
+      const lines = String(text || '').split(/\r?\n/);
+      const maxCh = Math.max(32, Math.min(72, lines.reduce((m, s) => Math.max(m, s.length), 0)));
+      const modalEl = document.querySelector('#lyrics-text-modal .lyrics-modal');
+      if (modalEl) modalEl.style.setProperty('--lyrics-modal-ch', String(maxCh));
+    };
+
     if (tr.fulltext) {
       fetch(tr.fulltext).then(r => r.text()).then(txt => {
         pre.textContent = txt;
+        applyWidthByText(txt);
       }).catch(() => {
-        pre.textContent = buildFallbackLyricsText();
+        const fb = buildFallbackLyricsText();
+        pre.textContent = fb;
+        applyWidthByText(fb);
       });
     } else {
-      pre.textContent = buildFallbackLyricsText();
+      const fb = buildFallbackLyricsText();
+      pre.textContent = fb;
+      applyWidthByText(fb);
     }
   }
   function closeLyricsModal() {
@@ -5984,6 +6058,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Optimize Images and Build Gallery Index
 Status: failure
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19143028684
-Time: 2025-11-06 16:50:00 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19143309528
+Time: 2025-11-06 17:00:11 UTC
 
