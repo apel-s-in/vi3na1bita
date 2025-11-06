@@ -2,38 +2,93 @@ name: Optimize Images and Build Gallery Index
 
 on:
   push:
+    branches: [ main, master ]
+    # чтобы не запускаться от собственного авто-коммита .meta и не зациклиться
+    paths-ignore:
+      - '.meta/**'
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-images:
-    if: github.actor != 'github-actions[bot]'
+  build-optimize-and-meta:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          persist-credentials: true
+          fetch-depth: 0
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install deps
+      - name: Ensure .nojekyll
         run: |
-          npm init -y >/dev/null 2>&1 || true
-          npm i -D sharp fast-glob
+          touch .nojekyll
 
-      - name: Generate WebP/AVIF and Thumbnails + Build gallery index.json
-        run: node scripts/build-gallery-index.mjs
+      - name: Install tools (jpegoptim, optipng, webp, ImageMagick, Node)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jpegoptim optipng webp imagemagick
+          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+          sudo apt-get install -y nodejs
+          node --version
+          npm --version
 
-      - name: Commit changes (if any)
-        uses: EndBug/add-and-commit@v9
+      - name: Optimize JPEG & PNG (albums/gallery only)
+        run: |
+          # JPEG
+          find albums/gallery -type f \( -iname "*.jpg" -o -iname "*.jpeg" \) -print0 | \
+            xargs -0 -I {} bash -c 'jpegoptim --strip-all --all-progressive "{}" || true'
+          # PNG
+          find albums/gallery -type f -iname "*.png" -print0 | \
+            xargs -0 -I {} bash -c 'optipng -o7 -strip all "{}" || true'
+
+      - name: Generate WebP
+        run: |
+          find albums/gallery -type f \( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" \) | while read img; do
+            webp="${img%.*}.webp"
+            if [ ! -f "$webp" ]; then
+              cwebp -q 85 "$img" -o "$webp" || true
+            fi
+          done
+
+      - name: Generate thumbnails (300x300)
+        run: |
+          shopt -s nullglob
+          for album_dir in albums/gallery/*/; do
+            [ -d "$album_dir" ] || continue
+            mkdir -p "${album_dir}thumbs"
+            for img in "${album_dir}"*.jpg "${album_dir}"*.jpeg "${album_dir}"*.png; do
+              [ -f "$img" ] || continue
+              filename="$(basename "$img")"
+              name="${filename%.*}"
+              thumb_path="${album_dir}thumbs/${name}-thumb.jpg"
+              if [ ! -f "$thumb_path" ]; then
+                convert "$img" -resize 300x300 -quality 85 "$thumb_path" || true
+              fi
+            done
+          done
+
+      - name: Build gallery index (optional)
+        run: |
+          if [ -f generate-index.js ]; then
+            node generate-index.js || true
+          else
+            echo "generate-index.js not found, skip"
+          fi
+
+      - name: Generate .meta context
+        run: |
+          if [ -f generate-context.js ]; then
+            node generate-context.js --mode=both --max-lines=20000 || true
+          else
+            echo "generate-context.js not found, skip"
+          fi
+
+      - name: Auto commit all changes (assets + gallery index + .meta + .nojekyll)
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          add: |
-            albums/gallery
-          message: 'chore(gallery): update images and index.json'
-          default_author: github_actions
+          commit_message: "CI: optimize images, build gallery index and generate .meta"
+          branch: ${{ github.ref_name }}
+          commit_user_name: github-actions[bot]
+          commit_user_email: github-actions[bot]@users.noreply.github.com
+          # Специально не указываем file_pattern — коммитим все изменения, проще сопровождать
