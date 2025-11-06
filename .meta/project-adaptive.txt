@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-9a1e515097e510b9cd184b1d1e5bed4927b3df5b.idx
-│   │       ├── pack-9a1e515097e510b9cd184b1d1e5bed4927b3df5b.pack
-│   │       └── pack-9a1e515097e510b9cd184b1d1e5bed4927b3df5b.rev
+│   │       ├── pack-f8de54fc7ca353b9700d3c98f23e443dae0e8309.idx
+│   │       ├── pack-f8de54fc7ca353b9700d3c98f23e443dae0e8309.pack
+│   │       └── pack-f8de54fc7ca353b9700d3c98f23e443dae0e8309.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -262,7 +262,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 16:42:55 UTC
+Сгенерировано: 2025-11-06 16:43:59 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1101,7 +1101,7 @@ async function generateIndex() {
           if (files.includes(`${basename}.webp`)) {
             formats.webp = `${basename}.webp`;
           }
-          if (fs.existsSync(thumbPath)) {
+          if (existsSyncSafely(thumbPath)) {
             formats.thumb = `thumbs/${basename}-thumb.jpg`;
           }
           // Формат 'full' всегда указывает на исходный файл
