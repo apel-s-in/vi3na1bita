@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-8884ef4bb4c66078ccd6bd68d0cd60a1153add69.idx
-│   │       ├── pack-8884ef4bb4c66078ccd6bd68d0cd60a1153add69.pack
-│   │       └── pack-8884ef4bb4c66078ccd6bd68d0cd60a1153add69.rev
+│   │       ├── pack-44f60c53152a83fc42f208935ef9a6f08e139451.idx
+│   │       ├── pack-44f60c53152a83fc42f208935ef9a6f08e139451.pack
+│   │       └── pack-44f60c53152a83fc42f208935ef9a6f08e139451.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -262,7 +262,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 18:04:49 UTC
+Сгенерировано: 2025-11-06 18:35:23 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1809,6 +1809,10 @@ generateIndex();
     '__favorites__': 'stars',
     '__reliz__': 'news'
   };
+  // Разрешённые id центральных галерей (существуют папки only: 00,01,02,news,stars)
+  const CENTRAL_ALLOWED_IDS = new Set(['00', '01', '02', 'news', 'stars']);
+  // Какие альбомы реально опубликованы (для warmup). Исключаем «Однажды в сказке».
+  const PUBLISHED_ALBUM_KEYS = new Set(['golos-dushi', 'mezhdu-zlom-i-dobrom', 'krevetochka']);
 
   let coverGalleryArr = [];
   let coverGalleryIdx = 0;
@@ -1843,9 +1847,16 @@ generateIndex();
     } catch { return null; }
   }
   function centralIdForAlbumKey(albumKey) {
-    if (CENTRAL_GALLERY_OVERRIDES[albumKey]) return CENTRAL_GALLERY_OVERRIDES[albumKey];
-    return albumOrderIndexStr(albumKey);
+    // Явные переопределения (krevetochka/news/stars)
+    if (CENTRAL_GALLERY_OVERRIDES[albumKey]) {
+      const id = CENTRAL_GALLERY_OVERRIDES[albumKey];
+      return CENTRAL_ALLOWED_IDS.has(id) ? id : null;
+    }
+    // Позиция в albums.json → "01","02",... но только если такая папка реально существует
+    const idByOrder = albumOrderIndexStr(albumKey);
+    return CENTRAL_ALLOWED_IDS.has(idByOrder) ? idByOrder : null;
   }
+
   function parseAspectFromFileName(url) {
     try {
       const name = url.split('?')[0].split('#')[0].split('/').pop();
@@ -2198,6 +2209,16 @@ generateIndex();
     const meta = albumByKey(key);
     if (!meta) { NotificationSystem.error('Альбом не найден'); return; }
 
+    // Если нажали на уже активный альбом в обычном режиме — просто переключаем видимость галереи
+    if (viewMode === 'album' && key === currentAlbumKey) {
+      __currentGalleryVisible = !__currentGalleryVisible;
+      setCoverWrapVisible(__currentGalleryVisible);
+      setActiveAlbumIcon(key);
+      setAlbumHeaderTitle(key);
+      return;
+    }
+
+    // Переход в альбом
     applyRelizUiMode(false);
     viewMode = 'album';
     clearRelizView();
@@ -2206,6 +2227,8 @@ generateIndex();
 
     const sel = document.getElementById('album-select'); if (sel) sel.value = key;
     setActiveAlbumIcon(key);
+
+    // По умолчанию заходим с открытой галереей
     __currentGalleryVisible = true;
     setCoverWrapVisible(true);
 
@@ -2420,14 +2443,20 @@ generateIndex();
       const list = (albumsIndex || []).map(a => a.key);
       const pos = list.indexOf(currentKey);
       const neigh = [list[pos - 1], list[pos + 1]].filter(Boolean);
+
       for (const key of neigh) {
+        // Пропускаем не опубликованные альбомы, чтобы не получать 404 в консоли
+        if (!PUBLISHED_ALBUM_KEYS.has(key)) continue;
+
         if (albumConfigCache[key]?.config) continue;
         const meta = albumByKey(key);
         if (!meta) continue;
         const base = normalizeBase(meta.base);
+
+        // Конфиг альбома (best-effort, без шумных ошибок)
         try {
           const r = await fetch(absJoin(base, 'config.json'), { cache: 'force-cache' });
-          if (r.ok) {
+          if (r && r.ok) {
             const data = await r.json();
             (data.tracks || []).forEach(t => {
               t.audio = absJoin(base, t.audio);
@@ -2437,6 +2466,8 @@ generateIndex();
             albumConfigCache[key] = { base, config: data };
           }
         } catch {}
+
+        // Центральная галерея — только если id входит в белый список
         try {
           const cid = centralIdForAlbumKey(key);
           if (cid) fetch(`${CENTRAL_GALLERY_BASE}${cid}/index.json`).catch(()=>{});
@@ -6159,8 +6190,8 @@ try { main(); } catch (e) { console.error("❌", e); process.exit(1); }
 // FILE: /.meta/ci-last.txt
 CI SUMMARY
 Repo: apel-s-in/vi3na1bita
-Workflow: Deploy to GitHub Pages
-Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19145156591
-Time: 2025-11-06 18:02:58 UTC
+Workflow: Optimize Images and Build Gallery Index
+Status: failure
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19145156563
+Time: 2025-11-06 18:10:13 UTC
 
