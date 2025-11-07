@@ -8,7 +8,7 @@
    Офлайн-пакеты: через сообщения OFFLINE_CACHE_ADD / OFFLINE_CACHE_CLEAR_CURRENT с прогрессом.
 */
 
-const SW_VERSION = '8.0.1';
+const SW_VERSION = '8.0.2';
 const CORE_CACHE = `core-${SW_VERSION}`;
 const RUNTIME_CACHE = `runtime-${SW_VERSION}`;
 const MEDIA_CACHE = `media-${SW_VERSION}`;
@@ -18,6 +18,8 @@ const META_CACHE = `meta-${SW_VERSION}`;
 const CORE_ASSETS = [
   './',
   './index.html',
+  './news.html',
+  './news/news.json',
   './manifest.json',
   './img/logo.png',
   './img/star.png',
@@ -110,6 +112,25 @@ self.addEventListener('fetch', (event) => {
         const cached = await cache.match(request) || await cache.match('./index.html');
         if (cached) return cached;
         return new Response('Offline', { status: 503, statusText: 'Offline' });
+      }
+    })());
+    return;
+  }
+
+  // Страницы/данные «Новости»: cache-first
+  if (request.url.endsWith('/news.html') || request.url.includes('/news/news.json')) {
+    event.respondWith((async () => {
+      const cache = await caches.open(RUNTIME_CACHE);
+      const cached = await cache.match(request);
+      if (cached) return cached;
+      try {
+        const netRes = await fetch(request);
+        if (netRes && netRes.ok) {
+          cache.put(request, netRes.clone()).catch(() => {});
+        }
+        return netRes;
+      } catch {
+        return cached || new Response('', { status: 404 });
       }
     })());
     return;
