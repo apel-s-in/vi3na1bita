@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-5b2a3d3e1b97cfa08096d3d1bcce2db086ddbe61.idx
-│   │       ├── pack-5b2a3d3e1b97cfa08096d3d1bcce2db086ddbe61.pack
-│   │       └── pack-5b2a3d3e1b97cfa08096d3d1bcce2db086ddbe61.rev
+│   │       ├── pack-6233c2115e30aec9ddd640dfa515d88fb2edf9b7.idx
+│   │       ├── pack-6233c2115e30aec9ddd640dfa515d88fb2edf9b7.pack
+│   │       └── pack-6233c2115e30aec9ddd640dfa515d88fb2edf9b7.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -244,7 +244,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 17:27:10 UTC
+Сгенерировано: 2025-11-07 17:29:19 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -413,15 +413,13 @@ jobs:
           npm init -y >/dev/null 2>&1 || true
           npm i -D sharp fast-glob
 
-      - name: Build gallery indexes
-        run: node scripts/build-gallery-index.mjs
-
-      - name: Install build deps (sharp + fast-glob)
+      - name: Clean old derivatives (webp + thumbs)
         run: |
-          npm init -y >/dev/null 2>&1 || true
-          npm i -D sharp fast-glob
+          # Пересоздаём производные, поэтому webp/previev можно безопасно снести
+          find albums/gallery -type f -name '*-thumb.jpg' -delete || true
+          find albums/gallery -type f -name '*.webp' -not -path '*/news/*' -delete || true
 
-      - name: Build gallery indexes
+      - name: Build gallery indexes (v2)
         run: node scripts/build-gallery-index.mjs
 
       - name: Optimize JPEG & PNG (changed only)
@@ -463,6 +461,7 @@ jobs:
             albums/gallery/**/*.png
             albums/gallery/**/*.webp
             albums/gallery/**/*.avif
+            albums/gallery/**/thumbs/**
             albums/gallery/**/index.json
             .meta/**
             .nojekyll
@@ -6303,8 +6302,8 @@ try { main(); } catch (e) { console.error("❌", e); process.exit(1); }
 // FILE: /.meta/ci-last.txt
 CI SUMMARY
 Repo: apel-s-in/vi3na1bita
-Workflow: Optimize Images and Build Gallery Index
+Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19175934694
-Time: 2025-11-07 17:22:34 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19176079582
+Time: 2025-11-07 17:27:42 UTC
 
