@@ -51,12 +51,19 @@ jobs:
             echo "has_images=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Install tools (jpegoptim, optipng, webp, ImageMagick, Node)
+      - name: Install image optimization tools
         run: |
           sudo apt-get update
           sudo apt-get install -y jpegoptim optipng webp imagemagick
-          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-          sudo apt-get install -y nodejs
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Verify Node and npm
+        run: |
           node --version
           npm --version
 
