@@ -1660,15 +1660,7 @@
         setCoverImage(coverGalleryIdx + 1);
         startCoverAutoPlay();
       };
-        if (!coverGalleryArr.length) return;
-        setCoverImage(coverGalleryIdx - 1);
-        startCoverAutoPlay();
-      };
-      document.getElementById('cover-gallery-arrow-right').onclick = () => {
-        if (!coverGalleryArr.length) return;
-        setCoverImage(coverGalleryIdx + 1);
-        startCoverAutoPlay();
-      };
+
       let startX = null;
       const el = document.getElementById('cover-wrap');
       el.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
