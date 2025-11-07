@@ -25,16 +25,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install build deps
-        run: |
-          npm init -y >/dev/null 2>&1 || true
-          npm i -D sharp fast-glob
-
       - name: Validate configs
         run: node scripts/validate-config.mjs
-
-      - name: Build gallery indexes
-        run: node scripts/build-gallery-index.mjs
 
       - name: Add .nojekyll
         run: touch .nojekyll
