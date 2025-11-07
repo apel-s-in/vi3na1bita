@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-53442af02cc72fc050f05cc8f1f5941a494d7469.idx
-│   │       ├── pack-53442af02cc72fc050f05cc8f1f5941a494d7469.pack
-│   │       └── pack-53442af02cc72fc050f05cc8f1f5941a494d7469.rev
+│   │       ├── pack-a4c0508093490815052a96e228827c3bb582156d.idx
+│   │       ├── pack-a4c0508093490815052a96e228827c3bb582156d.pack
+│   │       └── pack-a4c0508093490815052a96e228827c3bb582156d.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -261,7 +261,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-06 20:53:20 UTC
+Сгенерировано: 2025-11-07 13:13:50 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1908,50 +1908,93 @@ generateIndex();
   }
 
   /* Рендер кадра в слот */
+  let currentImageLoader = null;
   function renderCoverItem(item) {
     const slot = document.getElementById('cover-slot');
     const wrap = document.getElementById('cover-wrap');
     if (!slot || !item) return;
+    
+    // Отменяем предыдущую загрузку
+    if (currentImageLoader) {
+      currentImageLoader.onload = null;
+      currentImageLoader.onerror = null;
+      currentImageLoader = null;
+    }
+    
     if (wrap && item.ar) wrap.style.aspectRatio = String(item.ar);
 
-    // HTML-баннер — подмена сразу (нет события onload для контента)
+    // HTML-баннер
     if (item.type === 'html') {
       const ifr = document.createElement('iframe');
       ifr.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-popups allow-forms');
       ifr.setAttribute('referrerpolicy', 'no-referrer');
       ifr.loading = 'lazy';
       ifr.src = item.src;
-      // Мягкая замена без «чёрного» кадра
-      slot.replaceChildren(ifr);
+      
+      // Очищаем старый контент перед заменой
+      while (slot.firstChild) {
+        if (slot.firstChild.tagName === 'IFRAME') {
+          slot.firstChild.src = 'about:blank';
+        }
+        slot.removeChild(slot.firstChild);
+      }
+      slot.appendChild(ifr);
       return;
     }
 
-    // Картинка: сначала полностью загружаем, потом единожды подменяем DOM — без «мигания»
-    const picture = document.createElement('picture');
-
-    if (item.formats?.webp) {
-      const s = document.createElement('source'); s.type = 'image/webp'; s.srcset = item.formats.webp; picture.appendChild(s);
-    }
-    const img = document.createElement('img');
+    // Картинка: используем один Image для предзагрузки
+    const img = new Image();
+    currentImageLoader = img;
+    
     img.decoding = 'async';
-    img.loading = 'eager';
     img.referrerPolicy = 'no-referrer';
-    img.alt = 'Обложка альбома';
-    img.style.opacity = '0';
-    img.style.transition = 'opacity .2s ease';
-    img.onload = () => {
-      // подменяем за один раз; предыдущий кадр остаётся видимым до этого момента
-      picture.appendChild(img);
-      slot.replaceChildren(picture);
-      requestAnimationFrame(() => { img.style.opacity = '1'; });
+    
+    const applyImage = () => {
+      if (currentImageLoader !== img) return; // Проверяем актуальность
+      
+      const picture = document.createElement('picture');
+      if (item.formats?.webp) {
+        const s = document.createElement('source');
+        s.type = 'image/webp';
+        s.srcset = item.formats.webp;
+        picture.appendChild(s);
+      }
+      
+      const displayImg = document.createElement('img');
+      displayImg.src = img.src;
+      displayImg.alt = 'Обложка альбома';
+      displayImg.decoding = 'async';
+      displayImg.referrerPolicy = 'no-referrer';
+      displayImg.style.opacity = '0';
+      displayImg.style.transition = 'opacity .15s ease-out';
+      
+      picture.appendChild(displayImg);
+      
+      // Очищаем старый контент
+      while (slot.firstChild) {
+        if (slot.firstChild.tagName === 'IFRAME') {
+          slot.firstChild.src = 'about:blank';
+        }
+        slot.removeChild(slot.firstChild);
+      }
+      
+      slot.appendChild(picture);
+      
+      // Плавное появление
+      requestAnimationFrame(() => {
+        displayImg.style.opacity = '1';
+      });
     };
+    
+    img.onload = applyImage;
     img.onerror = () => {
-      // если ошибка — оставляем предыдущий кадр, но пробуем подменить напрямую
-      picture.appendChild(img);
-      slot.replaceChildren(picture);
-      img.style.opacity = '1';
+      if (currentImageLoader === img) {
+        console.warn('Failed to load image:', item.src);
+      }
     };
-    img.src = item.formats?.full || item.src;
+    
+    // Используем WebP если есть, иначе оригинал
+    img.src = item.formats?.webp || item.formats?.full || item.src;
   }
 
   /* Быстрый вывод до сборки всей галереи */
@@ -2000,8 +2043,35 @@ generateIndex();
   function resetGallery() {
     const wrap = document.getElementById('cover-wrap');
     if (wrap) wrap.classList.remove('gallery-nav-ready');
-    if (coverAutoplay) { clearInterval(coverAutoplay); coverAutoplay = null; }
+    
+    // Полная очистка автопроигрывания
+    if (coverAutoplay) {
+      clearInterval(coverAutoplay);
+      coverAutoplay = null;
+    }
+    
+    // Очистка текущего загрузчика изображений
+    if (currentImageLoader) {
+      currentImageLoader.onload = null;
+      currentImageLoader.onerror = null;
+      currentImageLoader = null;
+    }
+    
+    // Сброс состояния галереи
+    coverGalleryArr = [];
+    coverGalleryIdx = 0;
     galleryRotationStarted = false;
+    
+    // Очистка слота
+    const slot = document.getElementById('cover-slot');
+    if (slot) {
+      while (slot.firstChild) {
+        if (slot.firstChild.tagName === 'IFRAME') {
+          slot.firstChild.src = 'about:blank';
+        }
+        slot.removeChild(slot.firstChild);
+      }
+    }
   }
 
   /* Построение галереи из центрального index.json */
@@ -2010,27 +2080,51 @@ generateIndex();
     if (!id) return [];
     const baseDir = `${CENTRAL_GALLERY_BASE}${id}/`;
     try {
-      const r = await fetch(baseDir + 'index.json', { cache: 'no-cache', signal });
+      const r = await fetch(baseDir + 'index.json', { cache: 'force-cache', signal });
       if (!r.ok) return [];
       const j = await r.json();
       const arr = Array.isArray(j.items) ? j.items : (Array.isArray(j) ? j : []);
-      const tmp = [];
+      
+      // Группируем по базовому имени и выбираем лучший формат
+      const groups = new Map();
       for (const raw of arr) {
         const norm = normalizeGalleryItem(raw, baseDir);
-        if (norm) tmp.push(norm);
-      }
-      // Дедуп по базовому имени (без расширения) — оставляем один логический кадр
-      const pickKey = (item) => {
-        const url = (item.formats?.full || item.src || '').split('?')[0];
+        if (!norm) continue;
+        
+        const url = (norm.formats?.full || norm.src || '').split('?')[0];
         const name = url.split('/').pop() || '';
-        return name.replace(/\.(avif|webp|jpe?g|png)$/i, '').replace(/-thumb$/i, '');
-      };
-      const seen = new Set();
-      const out = [];
-      for (const it of tmp) {
-        const k = pickKey(it);
-        if (k && !seen.has(k)) { seen.add(k); out.push(it); }
+        const base = name.replace(/\.(avif|webp|jpe?g|png)$/i, '').replace(/-thumb$/i, '');
+        
+        if (!groups.has(base)) {
+          groups.set(base, []);
+        }
+        groups.get(base).push(norm);
       }
+      
+      // Выбираем лучший формат для каждого кадра
+      const out = [];
+      const formatPriority = ['webp', 'jpg', 'jpeg', 'png', 'avif'];
+      
+      for (const [base, items] of groups) {
+        if (items.length === 1) {
+          out.push(items[0]);
+        } else {
+          // Выбираем приоритетный формат
+          let best = items[0];
+          for (const fmt of formatPriority) {
+            const found = items.find(it => {
+              const url = it.formats?.full || it.src || '';
+              return url.toLowerCase().includes(`.${fmt}`);
+            });
+            if (found) {
+              best = found;
+              break;
+            }
+          }
+          out.push(best);
+        }
+      }
+      
       return out;
     } catch { return []; }
   }
@@ -2041,28 +2135,48 @@ generateIndex();
   }
 
   /* Установить элемент и префетч следующего */
+  let isTransitioning = false;
   function setCoverImage(idx) {
     if (!Array.isArray(coverGalleryArr) || !coverGalleryArr.length) return;
+    if (isTransitioning) return; // Предотвращаем наложение переходов
+    
+    isTransitioning = true;
     coverGalleryIdx = (idx + coverGalleryArr.length) % coverGalleryArr.length;
     const item = coverGalleryArr[coverGalleryIdx];
+    
     if (item) {
       renderCoverItem(item);
-      prefetchNextCover();
+      // Отложенный префетч следующего
+      setTimeout(() => {
+        prefetchNextCover();
+        isTransitioning = false;
+      }, 200);
+    } else {
+      isTransitioning = false;
     }
   }
+  const prefetchedUrls = new Set();
   function prefetchNextCover() {
     if (!Array.isArray(coverGalleryArr) || coverGalleryArr.length < 2) return;
+    
     const nextIdx = (coverGalleryIdx + 1) % coverGalleryArr.length;
     const it = coverGalleryArr[nextIdx];
     if (!it || it.type !== 'img') return;
+    
     const url = it.formats?.webp || it.formats?.full || it.src;
-    if (!url) return;
+    if (!url || prefetchedUrls.has(url)) return;
+    
+    // Ограничиваем количество префетч-ссылок
+    if (prefetchedUrls.size > 10) {
+      const oldLinks = document.querySelectorAll('link[rel="prefetch"][as="image"]');
+      oldLinks.forEach(link => link.remove());
+      prefetchedUrls.clear();
+    }
+    
     try {
-      const link = document.createElement('link');
-      link.rel = 'prefetch';
-      link.as = 'image';
-      link.href = url;
-      document.head.appendChild(link);
+      const img = new Image();
+      img.src = url;
+      prefetchedUrls.add(url);
     } catch {}
   }
   function startCoverAutoPlay() {
