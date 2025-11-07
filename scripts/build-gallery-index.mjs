@@ -83,16 +83,16 @@ async function processGalleryDir(absDir) {
   }
 
   for (const [base, variants] of Array.from(byBase.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
-    // Пропускаем дубликаты форматов одного изображения
+    // Выбираем только один формат для каждого базового имени (приоритетный)
+    let chosen;
     if (variants.length > 1) {
       // Если есть несколько форматов одного изображения, берём приоритетный
       const pick = SRC_ORDER.find(ext => variants.some(v => v.ext === ext)) || variants[0].ext;
-      const chosen = variants.find(v => v.ext === pick) || variants[0];
-      variants.length = 0;
-      variants.push(chosen);
+      chosen = variants.find(v => v.ext === pick) || variants[0];
+    } else {
+      chosen = variants[0];
     }
     
-    const chosen = variants[0];
     const fm = toFormats(absDir, chosen.name);
     if (!fm) continue;
 
