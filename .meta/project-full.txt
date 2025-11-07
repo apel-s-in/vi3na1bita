@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-fa7001989672bab736bbd91cb0911a0e70e1adca.idx
-│   │       ├── pack-fa7001989672bab736bbd91cb0911a0e70e1adca.pack
-│   │       └── pack-fa7001989672bab736bbd91cb0911a0e70e1adca.rev
+│   │       ├── pack-717c88067adbf424fc2fe7fb3dfedef58a1cb799.idx
+│   │       ├── pack-717c88067adbf424fc2fe7fb3dfedef58a1cb799.pack
+│   │       └── pack-717c88067adbf424fc2fe7fb3dfedef58a1cb799.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -115,7 +115,8 @@ vi3na1bita/
 │       │   ├── 02-cover-03.webp
 │       │   ├── 02-cover-04.jpg
 │       │   ├── 02-cover-04.png
-│       │   └── 02-cover-04.webp
+│       │   ├── 02-cover-04.webp
+│       │   └── index.json
 │       └── news/
 │           ├── thumbs/
 │           │   ├── news-cover-02-thumb.jpg
@@ -224,7 +225,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 18:20:36 UTC
+Сгенерировано: 2025-11-07 18:23:24 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -405,6 +406,37 @@ jobs:
       "formats": {
         "webp": "albums/gallery/00/00-cover-02.webp",
         "full": "albums/gallery/00/00-cover-02.png"
+      }
+    }
+  ]
+}
+
+//=================================================
+// FILE: /albums/gallery/02/index.json
+{
+  "items": [
+    {
+      "formats": {
+        "webp": "albums/gallery/02/02-cover-01.webp",
+        "full": "albums/gallery/02/02-cover-01.png"
+      }
+    },
+    {
+      "formats": {
+        "webp": "albums/gallery/02/02-cover-02.webp",
+        "full": "albums/gallery/02/02-cover-02.png"
+      }
+    },
+    {
+      "formats": {
+        "webp": "albums/gallery/02/02-cover-03.webp",
+        "full": "albums/gallery/02/02-cover-03.png"
+      }
+    },
+    {
+      "formats": {
+        "webp": "albums/gallery/02/02-cover-04.webp",
+        "full": "albums/gallery/02/02-cover-04.png"
       }
     }
   ]
@@ -5705,6 +5737,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177321802
-Time: 2025-11-07 18:18:11 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177394968
+Time: 2025-11-07 18:21:34 UTC
 
