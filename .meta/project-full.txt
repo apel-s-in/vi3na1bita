@@ -55,9 +55,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-08f2dc50908e496f638ad63c9e9752d6fa4c0a0d.idx
-│   │       ├── pack-08f2dc50908e496f638ad63c9e9752d6fa4c0a0d.pack
-│   │       └── pack-08f2dc50908e496f638ad63c9e9752d6fa4c0a0d.rev
+│   │       ├── pack-21e05135b478c27d864a0d59361fb93441c93ff4.idx
+│   │       ├── pack-21e05135b478c27d864a0d59361fb93441c93ff4.pack
+│   │       └── pack-21e05135b478c27d864a0d59361fb93441c93ff4.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -224,7 +224,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 23:04:24 UTC
+Сгенерировано: 2025-11-07 23:08:51 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -2978,7 +2978,7 @@ generateIndex();
     const tr = pc?.tracks?.[playingTrack];
     if (!tr) return;
 
-    const audioEl = document.getElementById('audio');
+    audioEl = document.getElementById('audio');
     if (__currentAudio && __currentAudio !== audioEl) stopAndCleanupAudio(__currentAudio);
     __currentAudio = audioEl;
     audioEl.src = tr.audio;
@@ -6108,6 +6108,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19180480677
-Time: 2025-11-07 20:32:56 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19183587204
+Time: 2025-11-07 23:05:22 UTC
 
