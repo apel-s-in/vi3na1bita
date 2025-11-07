@@ -3,12 +3,15 @@
  * Генерация index.json для albums/gallery/<id>/*
  * ВАЖНО: один логический кадр = один элемент в index.json (не дублируем форматы)
  */
-import fs from 'node:fs/promises';
+import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import fg from 'fast-glob';
 import sharp from 'sharp';
 
-const ROOT = path.resolve(process.cwd());
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const ROOT = path.resolve(__dirname, '..');
 const GALLERY_ROOT = path.join(ROOT, 'albums', 'gallery');
 
 const IMG_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
@@ -16,19 +19,40 @@ const HTML_EXT = new Set(['.html', '.htm']);
 const THUMBS_DIR = 'thumbs';
 const THUMB_WIDTH = 480;
 
-async function ensureDir(p) { await fs.mkdir(p, { recursive: true }); }
-async function fileExists(p) { try { await fs.access(p); return true; } catch { return false; } }
-function asRel(p) { return p.replace(ROOT + path.sep, '').split(path.sep).join('/'); }
+async function ensureDir(p) { 
+  await fs.mkdir(p, { recursive: true }); 
+}
+
+async function fileExists(p) { 
+  try { 
+    await fs.access(p); 
+    return true; 
+  } catch { 
+    return false; 
+  } 
+}
+
+function asRel(p) { 
+  return p.replace(ROOT + path.sep, '').split(path.sep).join('/'); 
+}
 
 async function getImageMeta(p) {
   try {
     const s = sharp(p);
     const meta = await s.metadata();
     const st = await fs.stat(p);
-    return { width: meta.width || null, height: meta.height || null, size: st.size || null };
+    return { 
+      width: meta.width || null, 
+      height: meta.height || null, 
+      size: st.size || null 
+    };
   } catch {
-    const st = await fs.stat(p).catch(() => ({ size: null }));
-    return { width: null, height: null, size: st.size || null };
+    try {
+      const st = await fs.stat(p);
+      return { width: null, height: null, size: st.size || null };
+    } catch {
+      return { width: null, height: null, size: null };
+    }
   }
 }
 
@@ -57,6 +81,7 @@ async function processGalleryDir(absDir) {
 
   // Группируем изображения по базовому имени (без расширения)
   const imageGroups = new Map();
+  
   for (const f of files) {
     const ext = path.extname(f).toLowerCase();
     if (!IMG_EXT.has(ext)) continue;
@@ -82,7 +107,9 @@ async function processGalleryDir(absDir) {
   }
 
   // Обрабатываем каждую группу изображений как ОДИН элемент
-  for (const [base, variants] of Array.from(imageGroups.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+  const sortedGroups = Array.from(imageGroups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  
+  for (const [base, variants] of sortedGroups) {
     // Выбираем лучший исходник для метаданных
     const priorityOrder = ['.jpg', '.jpeg', '.png', '.webp', '.avif'];
     let sourceFile = variants[0];
@@ -147,7 +174,6 @@ async function processGalleryDir(absDir) {
 
     // Добавляем ОДИН элемент для всей группы форматов
     items.push({
-      id: base,
       formats,
       width: meta.width,
       height: meta.height,
@@ -156,24 +182,35 @@ async function processGalleryDir(absDir) {
   }
 
   // Записываем index.json
-  await fs.writeFile(path.join(absDir, 'index.json'), JSON.stringify({ items }, null, 2), 'utf8');
+  await fs.writeFile(
+    path.join(absDir, 'index.json'), 
+    JSON.stringify({ items }, null, 2), 
+    'utf8'
+  );
+  
   console.log(`Processed ${absDir}: ${items.length} items`);
 }
 
 async function main() {
-  const dirs = await fg(['albums/gallery/*/'], { cwd: ROOT, onlyDirectories: true });
-  if (!dirs.length) {
-    console.log('No gallery dirs found');
-    return;
+  try {
+    const dirs = await fg(['albums/gallery/*/'], { cwd: ROOT, onlyDirectories: true });
+    
+    if (!dirs.length) {
+      console.log('No gallery dirs found');
+      return;
+    }
+    
+    for (const rel of dirs) {
+      const abs = path.join(ROOT, rel);
+      console.log('Processing gallery:', rel);
+      await processGalleryDir(abs);
+    }
+    
+    console.log('Done.');
+  } catch (error) {
+    console.error('Error in main:', error);
+    process.exit(1);
   }
-  
-  for (const rel of dirs) {
-    const abs = path.join(ROOT, rel);
-    console.log('Processing gallery:', rel);
-    await processGalleryDir(abs);
-  }
-  
-  console.log('Done.');
 }
 
 main().catch((e) => {
