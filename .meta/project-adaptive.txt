@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-bf1e1a2723ac8c3ac07b63291d006bc0dc829a29.idx
-│   │       ├── pack-bf1e1a2723ac8c3ac07b63291d006bc0dc829a29.pack
-│   │       └── pack-bf1e1a2723ac8c3ac07b63291d006bc0dc829a29.rev
+│   │       ├── pack-ad95328bd1d2c9cd25b730d313da99bc1124f0ea.idx
+│   │       ├── pack-ad95328bd1d2c9cd25b730d313da99bc1124f0ea.pack
+│   │       └── pack-ad95328bd1d2c9cd25b730d313da99bc1124f0ea.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -242,7 +242,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 18:10:33 UTC
+Сгенерировано: 2025-11-07 18:11:14 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -415,86 +415,19 @@ jobs:
   "items": [
     {
       "formats": {
-        "full": "albums/gallery/00/00-cover-01.avif",
         "webp": "albums/gallery/00/00-cover-01.webp",
-        "avif": "albums/gallery/00/00-cover-01.avif"
-      },
-      "width": 800,
-      "height": 450,
-      "size": 103862
+        "full": "albums/gallery/00/00-cover-01.png"
+      }
     },
     {
       "formats": {
-        "full": "albums/gallery/00/00-cover-01.jpg",
-        "webp": "albums/gallery/00/00-cover-01.webp",
-        "avif": "albums/gallery/00/00-cover-01.avif"
-      },
-      "width": 800,
-      "height": 450,
-      "size": 243784
-    },
-    {
-      "formats": {
-        "full": "albums/gallery/00/00-cover-01.png",
-        "webp": "albums/gallery/00/00-cover-01.webp",
-        "avif": "albums/gallery/00/00-cover-01.avif"
-      },
-      "width": 800,
-      "height": 450,
-      "size": 3583883
-    },
-    {
-      "formats": {
-        "full": "albums/gallery/00/00-cover-01.webp",
-        "webp": "albums/gallery/00/00-cover-01.webp",
-        "avif": "albums/gallery/00/00-cover-01.avif"
-      },
-      "width": 800,
-      "height": 450,
-      "size": 83992
-    },
-    {
-      "formats": {
-        "full": "albums/gallery/00/00-cover-02.avif",
         "webp": "albums/gallery/00/00-cover-02.webp",
-        "avif": "albums/gallery/00/00-cover-02.avif"
-      },
-      "width": 800,
-      "height": 450,
-      "size": 60881
-    },
-    {
-      "formats": {
-        "full": "albums/gallery/00/00-cover-02.jpg",
-        "webp": "albums/gallery/00/00-cover-02.webp",
-        "avif": "albums/gallery/00/00-cover-02.avif"
-      },
-      "width": 800,
-      "height": 450,
-      "size": 185673
-    },
-    {
-      "formats": {
-        "full": "albums/gallery/00/00-cover-02.png",
-        "webp": "albums/gallery/00/00-cover-02.webp",
-        "avif": "albums/gallery/00/00-cover-02.avif"
-      },
-      "width": 800,
-      "height": 450,
-      "size": 3331596
-    },
-    {
-      "formats": {
-        "full": "albums/gallery/00/00-cover-02.webp",
-        "webp": "albums/gallery/00/00-cover-02.webp",
-        "avif": "albums/gallery/00/00-cover-02.avif"
-      },
-      "width": 800,
-      "height": 450,
-      "size": 62714
+        "full": "albums/gallery/00/00-cover-02.png"
+      }
     }
   ]
 }
+
 //=================================================
 // FILE: /albums/gallery/02/index.json
 {
