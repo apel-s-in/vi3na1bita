@@ -74,6 +74,14 @@ jobs:
       - name: Build gallery indexes
         run: node scripts/build-gallery-index.mjs
 
+      - name: Install build deps (sharp + fast-glob)
+        run: |
+          npm init -y >/dev/null 2>&1 || true
+          npm i -D sharp fast-glob
+
+      - name: Build gallery indexes
+        run: node scripts/build-gallery-index.mjs
+
       - name: Optimize JPEG & PNG (changed only)
         if: steps.diff.outputs.has_images == 'true'
         run: |
@@ -93,12 +101,28 @@ jobs:
             echo "generate-context.js not found, skip"
           fi
 
-      - name: Auto commit all changes (assets + gallery index + .meta + .nojekyll)
+      - name: Rebase onto latest remote
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin ${{ github.ref_name }} --depth=1 || true
+          git pull --rebase origin ${{ github.ref_name }} || true
+
+      - name: Auto commit changes (images + gallery index + .meta + .nojekyll)
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "CI: optimize images and generate .meta"
           branch: ${{ github.ref_name }}
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
-          # Специально не указываем file_pattern — коммитим все изменения, проще сопровождать
-          skip_dirty_check: true  # Чтобы не фейлить, если ничего не изменилось
+          file_pattern: |
+            albums/gallery/**/*.jpg
+            albums/gallery/**/*.jpeg
+            albums/gallery/**/*.png
+            albums/gallery/**/*.webp
+            albums/gallery/**/*.avif
+            albums/gallery/**/index.json
+            .meta/**
+            .nojekyll
+          skip_dirty_check: true
+          push_options: '--force-with-lease'
