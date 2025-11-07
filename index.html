@@ -2327,7 +2327,7 @@
     const tr = pc?.tracks?.[playingTrack];
     if (!tr) return;
 
-    const audioEl = document.getElementById('audio');
+    audioEl = document.getElementById('audio');
     if (__currentAudio && __currentAudio !== audioEl) stopAndCleanupAudio(__currentAudio);
     __currentAudio = audioEl;
     audioEl.src = tr.audio;
