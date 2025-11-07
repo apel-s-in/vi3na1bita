@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-39f73012bc6067f6de881217098de084345876eb.idx
-│   │       ├── pack-39f73012bc6067f6de881217098de084345876eb.pack
-│   │       └── pack-39f73012bc6067f6de881217098de084345876eb.rev
+│   │       ├── pack-68b5319b0913dbf5bad29d9bb1915bbfc7d29025.idx
+│   │       ├── pack-68b5319b0913dbf5bad29d9bb1915bbfc7d29025.pack
+│   │       └── pack-68b5319b0913dbf5bad29d9bb1915bbfc7d29025.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -243,7 +243,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 18:06:26 UTC
+Сгенерировано: 2025-11-07 18:08:04 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -366,16 +366,8 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install build deps
-        run: |
-          npm init -y >/dev/null 2>&1 || true
-          npm i -D sharp fast-glob
-
       - name: Validate configs
         run: node scripts/validate-config.mjs
-
-      - name: Build gallery indexes
-        run: node scripts/build-gallery-index.mjs
 
       - name: Add .nojekyll
         run: touch .nojekyll
@@ -6171,8 +6163,8 @@ try { main(); } catch (e) { console.error("❌", e); process.exit(1); }
 // FILE: /.meta/ci-last.txt
 CI SUMMARY
 Repo: apel-s-in/vi3na1bita
-Workflow: Optimize Images and Build Gallery Index
+Workflow: Deploy to GitHub Pages
 Status: failure
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19176307350
-Time: 2025-11-07 17:38:13 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177031737
+Time: 2025-11-07 18:07:02 UTC
 
