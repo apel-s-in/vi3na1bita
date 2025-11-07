@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-6ef55e272a1a4af05b62aa8bb8218bf5f9ffef05.idx
-│   │       ├── pack-6ef55e272a1a4af05b62aa8bb8218bf5f9ffef05.pack
-│   │       └── pack-6ef55e272a1a4af05b62aa8bb8218bf5f9ffef05.rev
+│   │       ├── pack-4be254f3a1eb4e7cef89fb8e5144f30382ae8074.idx
+│   │       ├── pack-4be254f3a1eb4e7cef89fb8e5144f30382ae8074.pack
+│   │       └── pack-4be254f3a1eb4e7cef89fb8e5144f30382ae8074.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -261,7 +261,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 14:45:21 UTC
+Сгенерировано: 2025-11-07 15:27:55 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -5614,7 +5614,7 @@ async function getImageMeta(p) {
 }
 
 async function convertIfMissing(srcPath, targetPath, fmt) {
-  if (await fileExists(targetPath)) return true;
+  // Всегда перегенерируем WebP/thumbs в билде — гарантируем свежие и правильные артефакты
   try {
     const image = sharp(srcPath);
     if (fmt === 'webp') {
@@ -5624,7 +5624,7 @@ async function convertIfMissing(srcPath, targetPath, fmt) {
     }
     return true;
   } catch (e) {
-    console.warn('convertIfMissing fail:', srcPath, '->', targetPath, e?.message);
+    console.warn('convert fail:', srcPath, '->', targetPath, e?.message);
     return false;
   }
 }
@@ -6463,6 +6463,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Optimize Images and Build Gallery Index
 Status: failure
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19171604094
-Time: 2025-11-07 14:39:31 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19171817498
+Time: 2025-11-07 14:49:44 UTC
 
