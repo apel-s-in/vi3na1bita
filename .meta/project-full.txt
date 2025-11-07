@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-a5f9df3124cfdc2997122a8102c6fb5bda8fb21d.idx
-│   │       ├── pack-a5f9df3124cfdc2997122a8102c6fb5bda8fb21d.pack
-│   │       └── pack-a5f9df3124cfdc2997122a8102c6fb5bda8fb21d.rev
+│   │       ├── pack-bf1e1a2723ac8c3ac07b63291d006bc0dc829a29.idx
+│   │       ├── pack-bf1e1a2723ac8c3ac07b63291d006bc0dc829a29.pack
+│   │       └── pack-bf1e1a2723ac8c3ac07b63291d006bc0dc829a29.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -242,7 +242,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 18:08:37 UTC
+Сгенерировано: 2025-11-07 18:10:33 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1681,8 +1681,8 @@ generateIndex();
       }
     };
     
-    // Используем WebP если есть, иначе оригинал
-    img.src = item.formats?.webp || item.formats?.full || item.src;
+    // Выбираем лучший источник (см. pickBestSrc)
+    img.src = pickBestSrc(item);
   }
 
   /* Быстрый вывод до сборки всей галереи */
@@ -1816,27 +1816,54 @@ generateIndex();
     }
   }
   const prefetchedUrls = new Set();
+  const prefetchedFullUrls = new Set();
+
+  function isDesktopFast() {
+    try {
+      const nc = navigator.connection || navigator.webkitConnection || navigator.mozConnection;
+      const fast = !/2g|3g/.test(nc?.effectiveType || '') && (nc?.downlink || 5) >= 5;
+      const desktop = !/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      return desktop && fast;
+    } catch { return false; }
+  }
+
+  function pickBestSrc(item) {
+    if (!item || item.type !== 'img') return item?.src;
+    const full = item.formats?.full || item.src;
+    const webp = item.formats?.webp || null;
+    // webp — приоритет; но если десктоп+быстрая сеть и full уже прогрет — используем full
+    if (isDesktopFast() && full && prefetchedFullUrls.has(full)) return full;
+    return webp || full || item.src;
+  }
   function prefetchNextCover() {
     if (!Array.isArray(coverGalleryArr) || coverGalleryArr.length < 2) return;
-    
+
     const nextIdx = (coverGalleryIdx + 1) % coverGalleryArr.length;
     const it = coverGalleryArr[nextIdx];
     if (!it || it.type !== 'img') return;
-    
-    const url = it.formats?.webp || it.formats?.full || it.src;
-    if (!url || prefetchedUrls.has(url)) return;
-    
-    // Ограничиваем количество префетч-ссылок
-    if (prefetchedUrls.size > 10) {
-      const oldLinks = document.querySelectorAll('link[rel="prefetch"][as="image"]');
-      oldLinks.forEach(link => link.remove());
-      prefetchedUrls.clear();
-    }
-    
+
+    const webp = it.formats?.webp || null;
+    const full = it.formats?.full || it.src || null;
+
+    // Лимитируем размер набора
+    if (prefetchedUrls.size > 20) prefetchedUrls.clear();
+    if (prefetchedFullUrls.size > 20) prefetchedFullUrls.clear();
+
     try {
-      const img = new Image();
-      img.src = url;
-      prefetchedUrls.add(url);
+      if (webp && !prefetchedUrls.has(webp)) {
+        const imgW = new Image();
+        imgW.src = webp;
+        prefetchedUrls.add(webp);
+      }
+    } catch {}
+
+    try {
+      if (full && !prefetchedUrls.has(full)) {
+        const imgF = new Image();
+        imgF.onload = () => { prefetchedFullUrls.add(full); };
+        imgF.src = full;
+        prefetchedUrls.add(full);
+      }
     } catch {}
   }
   function startCoverAutoPlay() {
@@ -5928,7 +5955,7 @@ try { main(); } catch (e) { console.error("❌", e); process.exit(1); }
 CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
-Status: failure
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177031737
-Time: 2025-11-07 18:07:02 UTC
+Status: success
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177089927
+Time: 2025-11-07 18:09:04 UTC
 
