@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-0c7fa141cd2f3fc2c1f5b3ad80e687ff4fc5c1b3.idx
-│   │       ├── pack-0c7fa141cd2f3fc2c1f5b3ad80e687ff4fc5c1b3.pack
-│   │       └── pack-0c7fa141cd2f3fc2c1f5b3ad80e687ff4fc5c1b3.rev
+│   │       ├── pack-616806de7d4f9e73353078b8112066fba8f238f4.idx
+│   │       ├── pack-616806de7d4f9e73353078b8112066fba8f238f4.pack
+│   │       └── pack-616806de7d4f9e73353078b8112066fba8f238f4.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -261,7 +261,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 15:36:33 UTC
+Сгенерировано: 2025-11-07 15:47:44 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -453,6 +453,7 @@ jobs:
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
           # Специально не указываем file_pattern — коммитим все изменения, проще сопровождать
+          skip_dirty_check: true  # Чтобы не фейлить, если ничего не изменилось
 
 //=================================================
 // FILE: /.github/workflows/pages.yml
@@ -6435,6 +6436,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Optimize Images and Build Gallery Index
 Status: failure
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19173009888
-Time: 2025-11-07 15:30:48 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19173195907
+Time: 2025-11-07 15:40:43 UTC
 
