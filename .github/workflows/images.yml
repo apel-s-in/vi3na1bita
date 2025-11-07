@@ -71,15 +71,13 @@ jobs:
           npm init -y >/dev/null 2>&1 || true
           npm i -D sharp fast-glob
 
-      - name: Build gallery indexes
-        run: node scripts/build-gallery-index.mjs
-
-      - name: Install build deps (sharp + fast-glob)
+      - name: Clean old derivatives (webp + thumbs)
         run: |
-          npm init -y >/dev/null 2>&1 || true
-          npm i -D sharp fast-glob
+          # Пересоздаём производные, поэтому webp/previev можно безопасно снести
+          find albums/gallery -type f -name '*-thumb.jpg' -delete || true
+          find albums/gallery -type f -name '*.webp' -not -path '*/news/*' -delete || true
 
-      - name: Build gallery indexes
+      - name: Build gallery indexes (v2)
         run: node scripts/build-gallery-index.mjs
 
       - name: Optimize JPEG & PNG (changed only)
@@ -121,6 +119,7 @@ jobs:
             albums/gallery/**/*.png
             albums/gallery/**/*.webp
             albums/gallery/**/*.avif
+            albums/gallery/**/thumbs/**
             albums/gallery/**/index.json
             .meta/**
             .nojekyll
