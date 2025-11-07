@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-4be254f3a1eb4e7cef89fb8e5144f30382ae8074.idx
-│   │       ├── pack-4be254f3a1eb4e7cef89fb8e5144f30382ae8074.pack
-│   │       └── pack-4be254f3a1eb4e7cef89fb8e5144f30382ae8074.rev
+│   │       ├── pack-3a68adb32882b090b7a427559790c51fe510fb0a.idx
+│   │       ├── pack-3a68adb32882b090b7a427559790c51fe510fb0a.pack
+│   │       └── pack-3a68adb32882b090b7a427559790c51fe510fb0a.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -261,7 +261,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 15:27:55 UTC
+Сгенерировано: 2025-11-07 15:29:37 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -430,41 +430,6 @@ jobs:
             esac
           done < .changed-images.txt
 
-      - name: Generate WebP (changed only)
-        if: steps.diff.outputs.has_images == 'true'
-        run: |
-          set -e
-          while read -r img; do
-            case "$img" in
-              *.jpg|*.jpeg|*.png)
-                webp="${img%.*}.webp"
-                if [ ! -f "$webp" ]; then cwebp -q 85 "$img" -o "$webp" || true; fi
-                ;;
-            esac
-          done < .changed-images.txt
-
-      - name: Generate thumbnails (changed only, 300x300)
-        if: steps.diff.outputs.has_images == 'true'
-        run: |
-          set -e
-          while read -r img; do
-            case "$img" in
-              albums/gallery/*/*.jpg|albums/gallery/*/*.jpeg|albums/gallery/*/*.png)
-                album_dir="$(dirname "$img")/"
-                filename="$(basename "$img")"
-                name="${filename%.*}"
-                mkdir -p "${album_dir}thumbs"
-                thumb_path="${album_dir}thumbs/${name}-thumb.jpg"
-                if [ ! -f "$thumb_path" ]; then
-                  convert "$img" -resize 300x300 -quality 85 "$thumb_path" || true
-                fi
-                ;;
-            esac
-          done < .changed-images.txt
-
-      - name: Build gallery index (skip; используем scripts/build-gallery-index.mjs в pages.yml)
-        run: echo "skip local generate-index.js to avoid duplicates"
-
       - name: Generate .meta context
         run: |
           if [ -f generate-context.js ]; then
@@ -476,7 +441,7 @@ jobs:
       - name: Auto commit all changes (assets + gallery index + .meta + .nojekyll)
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "CI: optimize images, build gallery index and generate .meta"
+          commit_message: "CI: optimize images and generate .meta"
           branch: ${{ github.ref_name }}
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
