@@ -55,9 +55,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-cf4e8b840cc7409f89f9768661262c9366c48955.idx
-│   │       ├── pack-cf4e8b840cc7409f89f9768661262c9366c48955.pack
-│   │       └── pack-cf4e8b840cc7409f89f9768661262c9366c48955.rev
+│   │       ├── pack-be1dcb32ac77ac323688cf0424decbc7b27ebd6d.idx
+│   │       ├── pack-be1dcb32ac77ac323688cf0424decbc7b27ebd6d.pack
+│   │       └── pack-be1dcb32ac77ac323688cf0424decbc7b27ebd6d.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -224,7 +224,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 19:35:39 UTC
+Сгенерировано: 2025-11-07 20:21:49 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1601,7 +1601,6 @@ generateIndex();
     }
   }
   const prefetchedUrls = new Set();
-  const prefetchedFullUrls = new Set();
 
   function isDesktopFast() {
     try {
@@ -1614,12 +1613,12 @@ generateIndex();
 
   function pickBestSrc(item) {
     if (!item || item.type !== 'img') return item?.src;
-    const full = item.formats?.full || item.src;
     const webp = item.formats?.webp || null;
-    // webp — приоритет; но если десктоп+быстрая сеть и full уже прогрет — используем full
-    if (isDesktopFast() && full && prefetchedFullUrls.has(full)) return full;
-    return webp || full || item.src;
+    const full = item.formats?.full || item.src || null;
+    // Используем webp если есть; full — только если webp отсутствует
+    return webp || full;
   }
+
   function prefetchNextCover() {
     if (!Array.isArray(coverGalleryArr) || coverGalleryArr.length < 2) return;
 
@@ -1628,11 +1627,8 @@ generateIndex();
     if (!it || it.type !== 'img') return;
 
     const webp = it.formats?.webp || null;
-    const full = it.formats?.full || it.src || null;
 
-    // Лимитируем размер набора
     if (prefetchedUrls.size > 20) prefetchedUrls.clear();
-    if (prefetchedFullUrls.size > 20) prefetchedFullUrls.clear();
 
     try {
       if (webp && !prefetchedUrls.has(webp)) {
@@ -1641,16 +1637,8 @@ generateIndex();
         prefetchedUrls.add(webp);
       }
     } catch {}
-
-    try {
-      if (full && !prefetchedUrls.has(full)) {
-        const imgF = new Image();
-        imgF.onload = () => { prefetchedFullUrls.add(full); };
-        imgF.src = full;
-        prefetchedUrls.add(full);
-      }
-    } catch {}
   }
+
   function startCoverAutoPlay() {
     if (coverAutoplay) {
       clearInterval(coverAutoplay);
@@ -1950,7 +1938,6 @@ generateIndex();
     
     // Очищаем кэш изображений
     if (prefetchedUrls.size > 0) prefetchedUrls.clear();
-    if (prefetchedFullUrls.size > 0) prefetchedFullUrls.clear();
 
     currentAlbumKey = key;
     const base = normalizeBase(meta.base);
@@ -2291,8 +2278,39 @@ generateIndex();
         }
       }
 
+      // Инициализация энергосбережения
+      try {
+        applyEnergySaver(detectEnergySaver());
+        const nc = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+        if (nc && 'onchange' in nc) {
+          nc.addEventListener('change', () => applyEnergySaver(detectEnergySaver()));
+        }
+        const mrm = matchMedia('(prefers-reduced-motion: reduce)');
+        if (mrm && 'addEventListener' in mrm) {
+          mrm.addEventListener('change', () => applyEnergySaver(detectEnergySaver()));
+        }
+      } catch {}
+
       // Навигация галереи
-      document.getElementById('cover-gallery-arrow-left').onclick = () => {
+      const leftBtn  = document.getElementById('cover-gallery-arrow-left');
+      const rightBtn = document.getElementById('cover-gallery-arrow-right');
+      const galleryNavGuard = () => {
+        if (energySaver) { NotificationSystem.info('Галерея отключена в режиме энергосбережения'); return true; }
+        if (document.hidden) { NotificationSystem.info('Галерея приостановлена в фоне'); return true; }
+        return false;
+      };
+      leftBtn.onclick = () => {
+        if (galleryNavGuard()) return;
+        if (!coverGalleryArr.length) return;
+        setCoverImage(coverGalleryIdx - 1);
+        startCoverAutoPlay();
+      };
+      rightBtn.onclick = () => {
+        if (galleryNavGuard()) return;
+        if (!coverGalleryArr.length) return;
+        setCoverImage(coverGalleryIdx + 1);
+        startCoverAutoPlay();
+      };
         if (!coverGalleryArr.length) return;
         setCoverImage(coverGalleryIdx - 1);
         startCoverAutoPlay();
@@ -2376,6 +2394,12 @@ generateIndex();
 
       document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
+          // не останавливаем аудио — пусть играет в фоне
+          try {
+            const a = document.getElementById('audio');
+            if (a && a.paused) setTimeout(() => a.play().catch(()=>{}), 50);
+          } catch {}
+
           // стоп автопрокрутки галереи
           if (coverAutoplay) { clearInterval(coverAutoplay); coverAutoplay = null; }
           // пауза анимации лирики (запомним, если была активна)
@@ -2428,6 +2452,45 @@ generateIndex();
   let animationFrame = null;
 
   let filesToDownload = [];
+
+  // Энергосбережение
+  let energySaver = false;
+  let __savedAnimationBeforeEnergy = null;
+  let __savedBitBeforeEnergy = null;
+
+  function detectEnergySaver() {
+    try {
+      const nc = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+      const saveData = !!(nc && nc.saveData);
+      const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      return saveData || reduced;
+    } catch { return false; }
+  }
+
+  function applyEnergySaver(on) {
+    energySaver = !!on;
+    if (energySaver) {
+      if (__savedAnimationBeforeEnergy === null) __savedAnimationBeforeEnergy = animationEnabled;
+      if (__savedBitBeforeEnergy === null) __savedBitBeforeEnergy = bitEnabled;
+      if (animationEnabled) applyAnimationState(false);
+      if (bitEnabled) stopLogoPulsation();
+      // останавливаем галерею на текущем кадре
+      if (coverAutoplay) { clearInterval(coverAutoplay); coverAutoplay = null; }
+    } else {
+      if (__savedAnimationBeforeEnergy !== null) {
+        applyAnimationState(__savedAnimationBeforeEnergy);
+        __savedAnimationBeforeEnergy = null;
+      }
+      if (__savedBitBeforeEnergy) {
+        initAudioContext();
+        startLogoPulsation();
+      }
+      __savedBitBeforeEnergy = null;
+      if (!coverAutoplay && Array.isArray(coverGalleryArr) && coverGalleryArr.length > 1 && !document.hidden) {
+        startCoverAutoPlay();
+      }
+    }
+  }
   let __currentAudio = null;
   let __wasMini = false;
   let __savedLyricsModeForMini = null;
@@ -2927,10 +2990,13 @@ generateIndex();
     if (!w||!btn) return;
     w.classList.remove('lyrics-normal','lyrics-hidden','lyrics-expanded'); btn.classList.remove('lyrics-normal','lyrics-hidden','lyrics-expanded');
     w.classList.add(`lyrics-${lyricsViewMode}`); btn.classList.add(`lyrics-${lyricsViewMode}`);
+    // Если лирика скрыта — фон всегда выключаем
+    if (lyricsViewMode === 'hidden') applyAnimationState(false);
   }
 
   /* Контролы плеера */
   let lastTimeUpdate = 0, isSeekingProgress=false, isMuted=false, sleepTimerInterval=null, sleepTimerTarget=null;
+  let __lastProgressFillTs = 0; // троттлинг перерисовки прогресса (1 Гц)
   function initializePlayerControls() {
     const progressBar = document.getElementById('player-progress-bar');
     if (progressBar) {
@@ -2992,8 +3058,12 @@ generateIndex();
     const duration = audio.duration || 0;
 
     if (!isSeekingProgress && duration > 0) {
-      const fill = document.getElementById('player-progress-fill');
-      if (fill) fill.style.width = `${(currentTime / duration) * 100}%`;
+      const nowTs = Date.now();
+      if ((nowTs - __lastProgressFillTs) >= 1000) {
+        __lastProgressFillTs = nowTs;
+        const fill = document.getElementById('player-progress-fill');
+        if (fill) fill.style.width = `${(currentTime / duration) * 100}%`;
+      }
     }
     renderLyricsEnhanced(currentTime);
 
@@ -4081,6 +4151,7 @@ ${lines}
 
   /* ====== Анимация лирики, «бит» (пульс лого) ====== */
   function toggleAnimation() {
+    if (energySaver) { NotificationSystem.info('Отключено в режиме энергосбережения'); return; }
     applyAnimationState(!animationEnabled);
     localStorage.setItem('animationEnabled', animationEnabled ? '1' : '0');
     NotificationSystem.info(animationEnabled ? '✨ Анимация лирики: ВКЛ' : '✨ Анимация лирики: ВЫКЛ');
@@ -4096,6 +4167,7 @@ ${lines}
   }
 
   function toggleBit() {
+    if (energySaver) { NotificationSystem.info('Пульсация отключена в режиме энергосбережения'); return; }
     bitEnabled = !bitEnabled;
     localStorage.setItem('bitEnabled', bitEnabled ? '1' : '0');
     const btn = document.getElementById('bit-btn');
@@ -5838,6 +5910,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19179163240
-Time: 2025-11-07 19:34:41 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19179224936
+Time: 2025-11-07 19:37:31 UTC
 
