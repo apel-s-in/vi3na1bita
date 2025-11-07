@@ -19,6 +19,11 @@ const HTML_EXT = new Set(['.html', '.htm']);
 const THUMBS_DIR = 'thumbs';
 const THUMB_WIDTH = 480;
 
+// Безопасные настройки Sharp: отключаем кэш и параллелизм, чтобы избежать
+// редких коллизий при последовательной генерации файлов в CI.
+sharp.cache(false);
+sharp.concurrency(1);
+
 async function ensureDir(p) { 
   await fs.mkdir(p, { recursive: true }); 
 }
@@ -56,18 +61,26 @@ async function getImageMeta(p) {
   }
 }
 
-async function convertIfMissing(srcPath, targetPath, fmt) {
-  // Всегда перегенерируем WebP/thumbs в билде — гарантируем свежие и правильные артефакты
+async function regenerateDerivative(srcPath, targetPath, kind) {
+  // Перегенерируем производные без переиспользования пайплайна,
+  // предварительно удаляя цель — исключаем «залипание» старых артефактов.
   try {
-    const image = sharp(srcPath);
-    if (fmt === 'webp') {
-      await image.webp({ quality: 80 }).toFile(targetPath);
-    } else if (fmt === 'thumb') {
-      await image.resize({ width: THUMB_WIDTH, withoutEnlargement: true }).jpeg({ quality: 80 }).toFile(targetPath);
+    await fs.rm(targetPath, { force: true }).catch(() => {});
+    if (kind === 'webp') {
+      await sharp(srcPath, { sequentialRead: true })
+        .toFormat('webp', { quality: 82 })
+        .toFile(targetPath);
+    } else if (kind === 'thumb') {
+      await sharp(srcPath, { sequentialRead: true })
+        .resize({ width: THUMB_WIDTH, withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toFile(targetPath);
+    } else {
+      throw new Error('Unknown derivative kind: ' + kind);
     }
     return true;
   } catch (e) {
-    console.warn('convert fail:', srcPath, '->', targetPath, e?.message);
+    console.warn('regenerateDerivative fail:', srcPath, '->', targetPath, e?.message);
     return false;
   }
 }
@@ -130,8 +143,8 @@ async function processGalleryDir(absDir) {
     const thumbPath = path.join(thumbsDir, `${base}-thumb.jpg`);
     
     await ensureDir(thumbsDir);
-    await convertIfMissing(sourceAbsPath, webpPath, 'webp');
-    await convertIfMissing(sourceAbsPath, thumbPath, 'thumb');
+    await regenerateDerivative(sourceAbsPath, webpPath, 'webp');
+    await regenerateDerivative(sourceAbsPath, thumbPath, 'thumb');
 
     // Получаем метаданные
     const meta = await getImageMeta(sourceAbsPath);
