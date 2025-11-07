@@ -1,6 +1,6 @@
 CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Optimize Images and Build Gallery Index
-Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19175561199
-Time: 2025-11-07 17:13:51 UTC
+Status: failure
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19175671205
+Time: 2025-11-07 17:14:23 UTC
