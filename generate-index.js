@@ -2,6 +2,14 @@ const fs = require('fs').promises;
 const fsSync = require('fs');
 const path = require('path');
 
+// DEPRECATED: этот скрипт больше не используется для генерации галерей.
+// Правильный генератор: scripts/build-gallery-index.mjs
+// Если вдруг кто-то/что-то его запускает — явно падаем, чтобы не перезаписывать index.json старым форматом.
+if (!process.env.ALLOW_LEGACY_INDEX) {
+  console.error('[ERROR] generate-index.js is deprecated. Use scripts/build-gallery-index.mjs');
+  process.exit(1);
+}
+
 // Локальная синхронная проверка существования файла
 function existsSyncSafely(p) {
   try { fsSync.accessSync(p); return true; } catch { return false; }
