@@ -60,12 +60,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
 
       - name: Verify Node and npm
         run: |
           node --version
           npm --version
+
+      - name: Install build deps (sharp + fast-glob)
+        run: |
+          npm init -y >/dev/null 2>&1 || true
+          npm i -D sharp fast-glob
+
+      - name: Build gallery indexes
+        run: node scripts/build-gallery-index.mjs
 
       - name: Optimize JPEG & PNG (changed only)
         if: steps.diff.outputs.has_images == 'true'
