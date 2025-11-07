@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-c28d083e2f36084a707d9bb9e47a4c58ec5739f9.idx
-│   │       ├── pack-c28d083e2f36084a707d9bb9e47a4c58ec5739f9.pack
-│   │       └── pack-c28d083e2f36084a707d9bb9e47a4c58ec5739f9.rev
+│   │       ├── pack-f21b9660f55b298e5d0e2e417a8989ad4e0e650b.idx
+│   │       ├── pack-f21b9660f55b298e5d0e2e417a8989ad4e0e650b.pack
+│   │       └── pack-f21b9660f55b298e5d0e2e417a8989ad4e0e650b.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -261,7 +261,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 14:32:34 UTC
+Сгенерировано: 2025-11-07 14:37:15 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -5558,6 +5558,7 @@ if (savedState) {
 #!/usr/bin/env node
 /**
  * Генерация index.json для albums/gallery/<id>/*
+ * ВАЖНО: один логический кадр = один элемент в index.json (не дублируем форматы)
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -5567,7 +5568,7 @@ import sharp from 'sharp';
 const ROOT = path.resolve(process.cwd());
 const GALLERY_ROOT = path.join(ROOT, 'albums', 'gallery');
 
-const IMG_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']); // AVIF убран
+const IMG_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.avif']);
 const HTML_EXT = new Set(['.html', '.htm']);
 const THUMBS_DIR = 'thumbs';
 const THUMB_WIDTH = 480;
@@ -5587,116 +5588,155 @@ async function getImageMeta(p) {
     return { width: null, height: null, size: st.size || null };
   }
 }
+
 async function convertIfMissing(srcPath, targetPath, fmt) {
   if (await fileExists(targetPath)) return true;
   try {
     const image = sharp(srcPath);
-    if (fmt === 'webp')      await image.webp({ quality: 80 }).toFile(targetPath);
-    else if (fmt === 'thumb')await image.resize({ width: THUMB_WIDTH, withoutEnlargement: true }).jpeg({ quality: 80 }).toFile(targetPath);
+    if (fmt === 'webp') {
+      await image.webp({ quality: 80 }).toFile(targetPath);
+    } else if (fmt === 'thumb') {
+      await image.resize({ width: THUMB_WIDTH, withoutEnlargement: true }).jpeg({ quality: 80 }).toFile(targetPath);
+    }
     return true;
   } catch (e) {
     console.warn('convertIfMissing fail:', srcPath, '->', targetPath, e?.message);
     return false;
   }
 }
-function toFormats(baseDir, fileName) {
-  const p = path.join(baseDir, fileName);
-  const ext = path.extname(p).toLowerCase();
-  if (!IMG_EXT.has(ext)) return null;
-  const nameNoExt = fileName.slice(0, -ext.length);
-  const fullAbs = path.join(baseDir, `${nameNoExt}${ext}`);
-  const full = asRel(fullAbs);
-  const webp = asRel(path.join(baseDir, `${nameNoExt}.webp`));
-  const dirThumbs = path.join(baseDir, THUMBS_DIR);
-  const thumbAbs = path.join(dirThumbs, `${nameNoExt}-thumb.jpg`);
-  const thumb = asRel(thumbAbs);
-  return { fullAbs, full, webp, thumbAbs, dirThumbs };
-}
 
 async function processGalleryDir(absDir) {
   const entries = await fs.readdir(absDir, { withFileTypes: true });
   const files = entries.filter(e => e.isFile()).map(e => e.name);
 
+  // HTML файлы
   const htmls = files.filter(f => HTML_EXT.has(path.extname(f).toLowerCase())).sort();
 
-  // Группируем изображения по базовому имени (без расширения): один логический кадр = один item
-  const byBase = new Map();
+  // Группируем изображения по базовому имени (без расширения)
+  const imageGroups = new Map();
   for (const f of files) {
     const ext = path.extname(f).toLowerCase();
     if (!IMG_EXT.has(ext)) continue;
+    
+    // Пропускаем миниатюры
+    if (f.includes('-thumb.') || f.includes('@')) continue;
+    
     const base = f.slice(0, -ext.length);
-    const list = byBase.get(base) || [];
-    list.push({ name: f, ext });
-    byBase.set(base, list);
+    if (!imageGroups.has(base)) {
+      imageGroups.set(base, []);
+    }
+    imageGroups.get(base).push({ name: f, ext });
   }
-
-  // Порядок предпочтения исходника (что конвертировать в другие форматы)
-  const SRC_ORDER = ['.jpg', '.jpeg', '.png', '.webp', '.avif'];
 
   const items = [];
 
+  // Добавляем HTML файлы
   for (const f of htmls) {
-    items.push({ type: 'html', src: asRel(path.join(absDir, f)) });
+    items.push({ 
+      type: 'html', 
+      src: asRel(path.join(absDir, f)) 
+    });
   }
 
-  for (const [base, variants] of Array.from(byBase.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
-    // Выбираем только один формат для каждого базового имени (приоритетный)
-    let chosen;
-    if (variants.length > 1) {
-      // Если есть несколько форматов одного изображения, берём приоритетный
-      const pick = SRC_ORDER.find(ext => variants.some(v => v.ext === ext)) || variants[0].ext;
-      chosen = variants.find(v => v.ext === pick) || variants[0];
-    } else {
-      chosen = variants[0];
+  // Обрабатываем каждую группу изображений как ОДИН элемент
+  for (const [base, variants] of Array.from(imageGroups.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
+    // Выбираем лучший исходник для метаданных
+    const priorityOrder = ['.jpg', '.jpeg', '.png', '.webp', '.avif'];
+    let sourceFile = variants[0];
+    
+    for (const ext of priorityOrder) {
+      const found = variants.find(v => v.ext === ext);
+      if (found) {
+        sourceFile = found;
+        break;
+      }
+    }
+
+    const sourceAbsPath = path.join(absDir, sourceFile.name);
+    
+    // Генерируем WebP и миниатюру при необходимости
+    const webpPath = path.join(absDir, `${base}.webp`);
+    const thumbsDir = path.join(absDir, THUMBS_DIR);
+    const thumbPath = path.join(thumbsDir, `${base}-thumb.jpg`);
+    
+    await ensureDir(thumbsDir);
+    await convertIfMissing(sourceAbsPath, webpPath, 'webp');
+    await convertIfMissing(sourceAbsPath, thumbPath, 'thumb');
+
+    // Получаем метаданные
+    const meta = await getImageMeta(sourceAbsPath);
+
+    // Собираем все доступные форматы
+    const formats = {};
+    
+    // Проверяем существование всех форматов
+    for (const variant of variants) {
+      const varPath = path.join(absDir, variant.name);
+      if (await fileExists(varPath)) {
+        // Устанавливаем первый найденный как full
+        if (!formats.full) {
+          formats.full = asRel(varPath);
+        }
+        
+        // Добавляем специфические форматы
+        if (variant.ext === '.webp') {
+          formats.webp = asRel(varPath);
+        } else if (variant.ext === '.avif') {
+          formats.avif = asRel(varPath);
+        }
+      }
     }
     
-    const fm = toFormats(absDir, chosen.name);
-    if (!fm) continue;
-
-    await ensureDir(fm.dirThumbs);
-    // Производные: только WebP и превью
-    await convertIfMissing(fm.fullAbs, path.join(absDir, `${base}.webp`), 'webp');
-    await convertIfMissing(fm.fullAbs, fm.thumbAbs, 'thumb');
-
-    const meta = await getImageMeta(fm.fullAbs);
-    
-    // Собираем все доступные форматы для одного изображения
-    const formats = { 
-      full: fm.full,
-      webp: fm.webp,
-      thumb: fm.thumb 
-    };
-    
-    // AVIF если есть
-    const avifPath = path.join(absDir, `${base}.avif`);
-    if (await fileExists(avifPath)) {
-      formats.avif = asRel(avifPath);
+    // Если webp сгенерирован, но не был в исходных
+    if (!formats.webp && await fileExists(webpPath)) {
+      formats.webp = asRel(webpPath);
     }
     
-    // Добавляем ОДИН элемент с ВСЕМИ форматами
+    // Миниатюра
+    if (await fileExists(thumbPath)) {
+      formats.thumb = asRel(thumbPath);
+    }
+    
+    // Если нет full - используем webp
+    if (!formats.full && formats.webp) {
+      formats.full = formats.webp;
+    }
+
+    // Добавляем ОДИН элемент для всей группы форматов
     items.push({
       id: base,
       formats,
-      width: meta.width, 
-      height: meta.height, 
+      width: meta.width,
+      height: meta.height,
       size: meta.size
     });
   }
 
+  // Записываем index.json
   await fs.writeFile(path.join(absDir, 'index.json'), JSON.stringify({ items }, null, 2), 'utf8');
+  console.log(`Processed ${absDir}: ${items.length} items`);
 }
 
 async function main() {
   const dirs = await fg(['albums/gallery/*/'], { cwd: ROOT, onlyDirectories: true });
-  if (!dirs.length) { console.log('No gallery dirs found'); return; }
+  if (!dirs.length) {
+    console.log('No gallery dirs found');
+    return;
+  }
+  
   for (const rel of dirs) {
     const abs = path.join(ROOT, rel);
     console.log('Processing gallery:', rel);
     await processGalleryDir(abs);
   }
+  
   console.log('Done.');
 }
-main().catch((e) => { console.error(e); process.exit(1); });
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
 
 //=================================================
 // FILE: /scripts/validate-config.mjs
