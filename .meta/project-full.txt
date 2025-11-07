@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-c94286124ad8b341fce77f9f06ca81655cffbbc8.idx
-│   │       ├── pack-c94286124ad8b341fce77f9f06ca81655cffbbc8.pack
-│   │       └── pack-c94286124ad8b341fce77f9f06ca81655cffbbc8.rev
+│   │       ├── pack-15aef8828ec0b1fb1b85bb6fde3ab602a0b6dde2.idx
+│   │       ├── pack-15aef8828ec0b1fb1b85bb6fde3ab602a0b6dde2.pack
+│   │       └── pack-15aef8828ec0b1fb1b85bb6fde3ab602a0b6dde2.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 18:29:06 UTC
+Сгенерировано: 2025-11-07 18:52:17 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1730,7 +1730,8 @@ generateIndex();
         const norm = normalizeGalleryItem(first, baseDir);
         if (norm && norm.type === 'img') {
           const src = norm.formats?.full || norm.src || 'img/logo.png';
-          document.body.style.background = `url(${src}) center/cover fixed #111`;
+          const attach = isMobileUA() ? '' : ' fixed';
+          document.body.style.background = `url(${src}) center/cover${attach} #111`;
           return;
         }
       }
@@ -2375,7 +2376,29 @@ generateIndex();
         });
       }
 
-      document.addEventListener('visibilitychange', () => { if (!document.hidden) checkSleepTimer(); });
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          // стоп автопрокрутки галереи
+          if (coverAutoplay) { clearInterval(coverAutoplay); coverAutoplay = null; }
+          // пауза анимации лирики (запомним, если была активна)
+          if (animationEnabled) { window.__resumeAnimationOnFocus = true; applyAnimationState(false); }
+          // выгрузим аудио-граф «бита», чтобы не грел телефон
+          if (bitEnabled) { stopLogoPulsation(); }
+        } else {
+          checkSleepTimer();
+          // возобновляем автопрокрутку
+          if (!coverAutoplay && Array.isArray(coverGalleryArr) && coverGalleryArr.length > 1) {
+            startCoverAutoPlay();
+          }
+          // возвращаем анимацию, если была активна
+          if (window.__resumeAnimationOnFocus) {
+            applyAnimationState(true);
+            window.__resumeAnimationOnFocus = false;
+          }
+          // если бит включён — пересоздадим граф по требованию
+          if (bitEnabled) { initAudioContext(); startLogoPulsation(); }
+        }
+      });
       window.addEventListener('focus', checkSleepTimer);
 
       window.addEventListener('online', () => NotificationSystem.success('Соединение восстановлено'));
@@ -2803,6 +2826,10 @@ generateIndex();
 
   /* Лирика */
   let lyricsViewMode = 'normal';
+  // Троттлинг/стейт для лирики
+  let __lyricsLastIdx = -1;
+  let __lyricsLastTs = 0;
+  const __LYRICS_MIN_INTERVAL = 250; // мс
   function restoreLyricsViewMode() { try { const saved = localStorage.getItem('lyricsViewMode'); if (saved && ['normal','hidden','expanded'].includes(saved)) lyricsViewMode = saved; } catch {} }
   function saveLyricsViewMode() { try { localStorage.setItem('lyricsViewMode', lyricsViewMode); } catch {} }
   restoreLyricsViewMode();
@@ -2824,7 +2851,22 @@ generateIndex();
     const lyricsEl = document.getElementById('lyrics');
     if (lyricsEl) lyricsEl.innerHTML = rows.join('');
   }
-  function renderLyricsEnhanced(t){ if (lyricsViewMode==='hidden') return; renderLyrics(t); }
+  function renderLyricsEnhanced(t){
+    if (lyricsViewMode === 'hidden' || !Array.isArray(currentLyrics) || currentLyrics.length === 0) return;
+
+    // определяем активную строку
+    let idx = 0;
+    for (let i = 0; i < currentLyrics.length; i++) {
+      if (t >= currentLyrics[i].time) idx = i; else break;
+    }
+    const now = performance.now();
+    // если строка не изменилась и прошло меньше 250 мс — не рендерим
+    if (idx === __lyricsLastIdx && (now - __lyricsLastTs) < __LYRICS_MIN_INTERVAL) return;
+
+    __lyricsLastIdx = idx;
+    __lyricsLastTs = now;
+    renderLyrics(t);
+  }
 
   function copyLyrics(){
     const pc = getPlayerConfig();
@@ -3626,17 +3668,23 @@ generateIndex();
     if (t.lyrics) prefetchAudioLink(t.lyrics, 'fetch');
     if (t.fulltext) prefetchAudioLink(t.fulltext, 'fetch');
   }
-  function prefetchAudioLink(url, asType='audio') {
+  function prefetchAudioLink(url, asType = 'audio') {
     if (!url) return;
     try {
+      // Кольцевой буфер из max 8 ссылок
+      if (!window.__pfLinks) window.__pfLinks = [];
       const link = document.createElement('link');
       link.rel = 'prefetch';
       link.as = asType; // 'audio' | 'fetch'
       link.href = url;
       link.crossOrigin = 'anonymous';
       document.head.appendChild(link);
-      // ВАЖНО: не делаем fetch(url) — это ест память (буферизует медиа).
-    } catch(e) {}
+      window.__pfLinks.push(link);
+      if (window.__pfLinks.length > 8) {
+        const old = window.__pfLinks.shift();
+        try { old.remove(); } catch {}
+      }
+    } catch (e) {}
   }
 
   /* Загрузка лирики */
@@ -4082,7 +4130,17 @@ ${lines}
     if (animationFrame) { cancelAnimationFrame(animationFrame); animationFrame = null; }
     const logo = document.getElementById('logo-bottom');
     if (logo) logo.style.transform = 'scale(1)';
+    // Полностью освобождаем аудио-ресурсы
+    try { if (audioSource) { audioSource.disconnect(); audioSource = null; } } catch {}
+    try { if (analyser) { analyser.disconnect(); analyser = null; } } catch {}
+    try {
+      if (audioContext && audioContext.state !== 'closed' && typeof audioContext.close === 'function') {
+        audioContext.close().catch(()=>{});
+      }
+    } catch {}
+    audioContext = null;
   }
+
   function handleLogoClick() {
     // Лёгкий «тычок»
     const logo = document.getElementById('logo-bottom');
@@ -5743,6 +5801,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177542575
-Time: 2025-11-07 18:26:55 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177610474
+Time: 2025-11-07 18:29:43 UTC
 
