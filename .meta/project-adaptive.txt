@@ -55,9 +55,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-f551d44fdee2cedf3656a67bd61708faf1e559d8.idx
-│   │       ├── pack-f551d44fdee2cedf3656a67bd61708faf1e559d8.pack
-│   │       └── pack-f551d44fdee2cedf3656a67bd61708faf1e559d8.rev
+│   │       ├── pack-08f2dc50908e496f638ad63c9e9752d6fa4c0a0d.idx
+│   │       ├── pack-08f2dc50908e496f638ad63c9e9752d6fa4c0a0d.pack
+│   │       └── pack-08f2dc50908e496f638ad63c9e9752d6fa4c0a0d.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -224,7 +224,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 20:30:19 UTC
+Сгенерировано: 2025-11-07 23:04:24 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -909,6 +909,10 @@ generateIndex();
       color: var(--secondary-color) !important; background:none; border:none; cursor:pointer; font-size:1em; text-transform:uppercase; font-weight:700; letter-spacing:.02em; text-decoration:underline; transition:.18s; padding:4px 16px; min-width:148px; text-align:center; border-radius:7px; display:block; margin: 0 auto;
     }
     .karaoke-btn:hover, .player-download-btn:hover { color:#fff !important; background:#273050; }
+    /* Ультра‑эконом (молния) */
+    .eco-btn { align-self: flex-end; color: var(--secondary-color); background: none; border: none; cursor: pointer; font-size: 1.1em; font-weight: 800; letter-spacing: .02em; padding: 4px 10px; border-radius: 7px; transition: .18s; }
+    .eco-btn:hover { color: #fff; background: #2a2f45; }
+    .eco-btn.eco-active { color: var(--primary-color); }
 
     .bottom-controls-center { display:flex; flex-direction:column; align-items:center; justify-content:center; margin:32px auto 0 auto; gap:8px; width:100%; max-width:280px; padding-bottom: env(safe-area-inset-bottom); }
 
@@ -2252,6 +2256,9 @@ generateIndex();
           animationEnabled = localStorage.getItem('animationEnabled') === '1';
           bitEnabled = localStorage.getItem('bitEnabled') === '1';
           const savedIntensity = localStorage.getItem('bitIntensity'); if (savedIntensity) bitIntensity = parseInt(savedIntensity);
+          ultraEcoEnabled = localStorage.getItem('ultraEco') === '1';
+          // Применим эко-профиль (тихо): изменит троттлинги/анимации/галерею
+          applyEcoState(ultraEcoEnabled, { silent: true });
         } catch {}
 
         await loadAlbumByKey(sel.value);
@@ -2415,8 +2422,26 @@ generateIndex();
       });
       window.addEventListener('focus', checkSleepTimer);
 
-      window.addEventListener('online', () => NotificationSystem.success('Соединение восстановлено'));
-      window.addEventListener('offline', () => NotificationSystem.offline('Нет соединения с интернетом'));
+      window.addEventListener('offline', () => {
+        startOfflineToasts();
+        const a = document.getElementById('audio');
+        if (a) {
+          try { __savedResumePosition = a.currentTime || 0; } catch {}
+          try { a.pause(); } catch {}
+        }
+      });
+      window.addEventListener('online', () => {
+        stopOfflineToasts();
+        NotificationSystem.success('Соединение восстановлено');
+        const a = document.getElementById('audio');
+        if (a) {
+          if (typeof __savedResumePosition === 'number') {
+            try { a.currentTime = __savedResumePosition; } catch {}
+            __savedResumePosition = null;
+          }
+          a.play().catch(()=>{});
+        }
+      });
     })();
   }
 
@@ -2445,6 +2470,29 @@ generateIndex();
 
   let filesToDownload = [];
 
+  /* ====== Ультра‑эконом и сеть ====== */
+  let ultraEcoEnabled = false;
+  let __uiUpdateMinIntervalMs = 1000;   // 1с по умолчанию
+  let __progressThrottleMs   = 1000;
+  let __savedAnimationBeforeEco = null;
+  let __savedBitBeforeEco = null;
+  let __ecoAutoFromEnergy = false;
+
+  let __offlineToastInterval = null;
+  let __savedResumePosition = null;
+
+  function startOfflineToasts() {
+    try { if (__offlineToastInterval) return;
+      NotificationSystem.offline('Пропало интернет соединение');
+      __offlineToastInterval = setInterval(() => {
+        NotificationSystem.offline('Пропало интернет соединение');
+      }, 30000);
+    } catch {}
+  }
+  function stopOfflineToasts() {
+    try { if (__offlineToastInterval) { clearInterval(__offlineToastInterval); __offlineToastInterval = null; } } catch {}
+  }
+
   // Энергосбережение
   let energySaver = false;
   let __savedAnimationBeforeEnergy = null;
@@ -2466,8 +2514,9 @@ generateIndex();
       if (__savedBitBeforeEnergy === null) __savedBitBeforeEnergy = bitEnabled;
       if (animationEnabled) applyAnimationState(false);
       if (bitEnabled) stopLogoPulsation();
-      // останавливаем галерею на текущем кадре
       if (coverAutoplay) { clearInterval(coverAutoplay); coverAutoplay = null; }
+      // Авто-включаем «Ультра‑эконом» (можно потом отключить вручную)
+      if (!ultraEcoEnabled) { __ecoAutoFromEnergy = true; applyEcoState(true, { silent: true }); }
     } else {
       if (__savedAnimationBeforeEnergy !== null) {
         applyAnimationState(__savedAnimationBeforeEnergy);
@@ -2480,6 +2529,13 @@ generateIndex();
       __savedBitBeforeEnergy = null;
       if (!coverAutoplay && Array.isArray(coverGalleryArr) && coverGalleryArr.length > 1 && !document.hidden) {
         startCoverAutoPlay();
+      }
+      // Если Эко включали автоматом — вернём как было (если пользователь сам не зафиксировал включение)
+      if (__ecoAutoFromEnergy) {
+        __ecoAutoFromEnergy = false;
+        if (localStorage.getItem('ultraEco') !== '1') {
+          applyEcoState(false, { silent: true });
+        }
       }
     }
   }
@@ -2744,22 +2800,41 @@ generateIndex();
     try { audio.removeEventListener('loadedmetadata', __audioHandlers.onLoaded); } catch {}
     try { audio.removeEventListener('timeupdate', __audioHandlers.onTime); } catch {}
     try { audio.removeEventListener('ended', __audioHandlers.onEnded); } catch {}
+    try { audio.removeEventListener('waiting', __audioHandlers.onWaiting); } catch {}
+    try { audio.removeEventListener('stalled', __audioHandlers.onStalled); } catch {}
+    try { audio.removeEventListener('error', __audioHandlers.onError); } catch {}
     try { audio.onplay = null; audio.onpause = null; } catch {}
     __audioHandlers = null;
   }
   function attachAudioEventListeners(audio) {
     if (!audio) return;
     detachAudioEventListeners(audio);
-    const onLoaded = onAudioMetadataLoaded;
-    const onTime   = onAudioTimeUpdate;
-    const onEnded  = onAudioEnded;
+    const onLoaded  = onAudioMetadataLoaded;
+    const onTime    = onAudioTimeUpdate;
+    const onEnded   = onAudioEnded;
+    const onWaiting = (ev) => {
+      if (navigator.onLine === false) {
+        try { __savedResumePosition = audio.currentTime || 0; } catch {}
+        try { audio.pause(); } catch {}
+        startOfflineToasts();
+      }
+    };
+    const onStalled = onWaiting;
+    const onError   = (ev) => {
+      if (navigator.onLine === false) {
+        startOfflineToasts();
+      }
+    };
     audio.addEventListener('loadedmetadata', onLoaded);
     audio.addEventListener('timeupdate',     onTime);
     audio.addEventListener('ended',          onEnded);
+    audio.addEventListener('waiting',        onWaiting);
+    audio.addEventListener('stalled',        onStalled);
+    audio.addEventListener('error',          onError);
     // playbackState обновляем через onplay/onpause (переприсваивается, не накапливается)
     audio.onplay  = () => { try { navigator.mediaSession.playbackState = 'playing'; } catch {} };
     audio.onpause = () => { try { navigator.mediaSession.playbackState = 'paused';  } catch {} };
-    __audioHandlers = { onLoaded, onTime, onEnded };
+    __audioHandlers = { onLoaded, onTime, onEnded, onWaiting, onStalled, onError };
   }
 
   function stopAndCleanupAudio(a) {
@@ -2822,6 +2897,9 @@ generateIndex();
     const block = document.getElementById('lyricsplayerblock') || document.getElementById('now-playing');
     if (!block) return;
 
+    // Берём существующий audio (если уже был), чтобы НЕ пересоздавать элемент
+    const existingAudio = document.getElementById('audio');
+
     block.innerHTML = `
       <div class="mini-now" id="mini-now" onclick="openPlayingAlbumFromMini(event)">
         <span class="tnum" id="mini-now-num">--.</span>
@@ -2837,7 +2915,7 @@ generateIndex();
       <div class="player-progress-wrapper">
         <div class="player-progress-bar" id="player-progress-bar"><div class="player-progress-fill" id="player-progress-fill"><div class="player-progress-handle"></div></div></div>
       </div>
-      <div class="audio-wrapper"><audio id="audio" preload="metadata" playsinline crossorigin="anonymous" aria-hidden="true" tabindex="-1"></audio></div>
+      <div class="audio-wrapper"><div id="audio-slot"></div></div>
       <div class="player-controls" role="group" aria-label="Управление воспроизведением">
         <div class="player-controls-row">
           <span class="time-in-controls" id="time-elapsed">00:00</span>
@@ -2871,13 +2949,30 @@ generateIndex();
         <div class="volume-track"></div><div class="volume-fill" id="volume-fill"></div>
         <input type="range" class="volume-slider" id="volume-slider" min="0" max="100" value="100" aria-label="Громкость" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100">
       </div>
-      <div class="next-up" id="next-up"><span class="label">Следующая:</span> <span class="title">—</span></div>
       <div class="player-buttons-wrapper">
         <button class="lyrics-toggle-btn lyrics-normal" onclick="toggleLyricsView()" aria-label="Скрыть лирику" title="Скрыть лирику (Y)"><span class="lyrics-toggle-btn-visual">Т</span></button>
         <button class="karaoke-btn" onclick="openLyricsModal()">ТЕКСТ</button>
         <a class="player-download-btn" href="#" onclick="openDownloadModal(event)">СКАЧАТЬ ПЕСНЮ</a>
+        <button id="eco-btn" class="eco-btn" onclick="toggleEco()" title="Ультра‑эконом: минимальные обновления UI в фоне">⚡</button>
       </div>
     `;
+
+    // Вставляем/создаём единый audio
+    const slot = document.getElementById('audio-slot');
+    let audioEl = existingAudio;
+    if (!audioEl) {
+      audioEl = document.createElement('audio');
+      audioEl.id = 'audio';
+      audioEl.preload = 'metadata';
+      audioEl.playsInline = true;
+      audioEl.crossOrigin = 'anonymous';
+      audioEl.setAttribute('aria-hidden', 'true');
+      audioEl.tabIndex = -1;
+    }
+    if (slot && audioEl && audioEl.parentNode !== slot) {
+      slot.appendChild(audioEl);
+    }
+    __currentAudio = audioEl;
 
     const pc = getPlayerConfig();
     const tr = pc?.tracks?.[playingTrack];
@@ -2889,6 +2984,9 @@ generateIndex();
     audioEl.src = tr.audio;
 
     attachPlaybackStateListeners();
+
+    // Кнопка эко — восстановим визуальное состояние
+    try { const eb = document.getElementById('eco-btn'); if (eb) eb.classList.toggle('eco-active', ultraEcoEnabled); } catch {}
 
     if (bitEnabled) { try { initAudioContext(); startLogoPulsation(); } catch{} }
 
@@ -3042,30 +3140,58 @@ generateIndex();
     const remainingEl = document.getElementById('time-remaining');
     if (elapsedEl) elapsedEl.textContent = '00:00';
     if (remainingEl) remainingEl.textContent = formatTime(duration);
+    // Media Session: стартовое состояние позиции
+    try {
+      if ('mediaSession' in navigator && typeof navigator.mediaSession.setPositionState === 'function') {
+        navigator.mediaSession.setPositionState({
+          duration: isFinite(duration) ? duration : 0,
+          playbackRate: audio.playbackRate || 1,
+          position: audio.currentTime || 0
+        });
+      }
+    } catch {}
   }
   function onAudioTimeUpdate(e) {
     const audio = (e && (e.currentTarget || e.target)) || document.getElementById('audio');
     if (!audio) return;
+
+    // В «Ультра‑эконом» в фоне не трогаем DOM вообще
+    if (ultraEcoEnabled && document.hidden) {
+      return;
+    }
+
     const currentTime = audio.currentTime || 0;
     const duration = audio.duration || 0;
 
     if (!isSeekingProgress && duration > 0) {
       const nowTs = Date.now();
-      if ((nowTs - __lastProgressFillTs) >= 1000) {
+      if ((nowTs - __lastProgressFillTs) >= __progressThrottleMs) {
         __lastProgressFillTs = nowTs;
         const fill = document.getElementById('player-progress-fill');
         if (fill) fill.style.width = `${(currentTime / duration) * 100}%`;
       }
     }
+
+    // Лирика (при эко-режиме обновляется реже через общий троттлинг ниже)
     renderLyricsEnhanced(currentTime);
 
     const now = Date.now();
-    if (now - lastTimeUpdate >= 1000) {
+    if (now - lastTimeUpdate >= __uiUpdateMinIntervalMs) {
       lastTimeUpdate = now;
       const elapsedEl = document.getElementById('time-elapsed');
       const remainingEl = document.getElementById('time-remaining');
       if (elapsedEl) elapsedEl.textContent = formatTime(currentTime);
       if (remainingEl) remainingEl.textContent = formatTime(Math.max(0, duration - currentTime));
+      // Media Session: обновляем позицию
+      try {
+        if ('mediaSession' in navigator && typeof navigator.mediaSession.setPositionState === 'function') {
+          navigator.mediaSession.setPositionState({
+            duration: isFinite(duration) ? duration : 0,
+            playbackRate: audio.playbackRate || 1,
+            position: currentTime
+          });
+        }
+      } catch {}
       try { savePlayerStateThrottled(false); } catch {}
     }
     updatePlayPauseIcon();
@@ -4101,8 +4227,8 @@ ${lines}
       return;
     }
 
-    // Показываем оверлей за 10 секунд до отключения
-    if (msLeft <= 10000 && !document.querySelector('#sleep-overlay')) {
+    // В «Ультра‑эконом» не показываем пред-оверлей
+    if (!ultraEcoEnabled && msLeft <= 10000 && !document.querySelector('#sleep-overlay')) {
       showSleepOverlay();
     }
     updateSleepTimerUI();
@@ -4234,6 +4360,57 @@ ${lines}
       }
     } catch {}
     audioContext = null;
+  }
+
+  /* ====== Ультра‑эконом: переключение/применение ====== */
+  function applyEcoState(on, { silent = false } = {}) {
+    ultraEcoEnabled = !!on;
+    // Троттлинги
+    __uiUpdateMinIntervalMs = ultraEcoEnabled ? 5000 : 1000;
+    __progressThrottleMs    = ultraEcoEnabled ? 5000 : 1000;
+
+    // Анимации/бит/галерея
+    if (ultraEcoEnabled) {
+      if (__savedAnimationBeforeEco === null) __savedAnimationBeforeEco = animationEnabled;
+      if (__savedBitBeforeEco === null) __savedBitBeforeEco = bitEnabled;
+      if (animationEnabled) applyAnimationState(false);
+      if (bitEnabled) stopLogoPulsation();
+      if (coverAutoplay) { clearInterval(coverAutoplay); coverAutoplay = null; }
+    } else {
+      if (__savedAnimationBeforeEco !== null) { applyAnimationState(__savedAnimationBeforeEco); __savedAnimationBeforeEco = null; }
+      if (__savedBitBeforeEco) { try { initAudioContext(); startLogoPulsation(); } catch {} }
+      __savedBitBeforeEco = null;
+      if (!coverAutoplay && Array.isArray(coverGalleryArr) && coverGalleryArr.length > 1 && !document.hidden && !energySaver) {
+        startCoverAutoPlay();
+      }
+    }
+
+    // UI кнопка
+    try { const eb = document.getElementById('eco-btn'); if (eb) eb.classList.toggle('eco-active', ultraEcoEnabled); } catch {}
+
+    // Сохранение состояния (ручное включение/выключение)
+    try { localStorage.setItem('ultraEco', ultraEcoEnabled ? '1' : '0'); } catch {}
+
+    if (!silent) {
+      NotificationSystem.info(ultraEcoEnabled ? '⚡ Ультра‑эконом: ВКЛ' : '⚡ Ультра‑эконом: ВЫКЛ');
+    }
+
+    // Если выходим из «фона» или выключаем эко — привести UI к актуальному состоянию
+    if (!document.hidden) {
+      try {
+        const a = document.getElementById('audio');
+        if (a) {
+          onAudioMetadataLoaded({ currentTarget: a });
+          onAudioTimeUpdate({ currentTarget: a });
+        }
+      } catch {}
+    }
+  }
+
+  function toggleEco() {
+    // Если до этого авто-включили из энергосбережения — дальше управление вручную
+    __ecoAutoFromEnergy = false;
+    applyEcoState(!ultraEcoEnabled);
   }
 
   function handleLogoClick() {
@@ -4580,12 +4757,14 @@ ${lines}
     const favIcon = document.getElementById('favorites-btn-icon');
     const btnAnim = document.getElementById('animation-btn');
     const btnBit = document.getElementById('bit-btn');
+    const btnEco = document.getElementById('eco-btn');
     if (btnSh) btnSh.classList.toggle('active', shuffleMode);
     if (btnRpt) btnRpt.classList.toggle('repeat-active', repeatMode);
     if (btnFav) btnFav.classList.toggle('favorites-active', favoritesOnlyMode);
     if (favIcon) favIcon.src = favoritesOnlyMode ? 'img/star.png' : 'img/star2.png';
     if (btnAnim) btnAnim.classList.toggle('animation-active', animationEnabled);
     if (btnBit) btnBit.classList.toggle('bit-active', bitEnabled);
+    if (btnEco) btnEco.classList.toggle('eco-active', ultraEcoEnabled);
   }
 
   // Инициализация при загрузке
@@ -4597,6 +4776,12 @@ ${lines}
       document.getElementById('main-block').classList.remove('hidden');
       initializeMainUi();
     }
+    // Подсказка про Memory Saver, если вкладка была выгружена
+    try {
+      if (document.wasDiscarded) {
+        NotificationSystem.warning('Похоже, вкладка была выгружена (Memory Saver). Добавьте сайт в исключения, чтобы музыка не останавливалась.');
+      }
+    } catch {}
     // Периодическая проверка таймера сна
     setInterval(checkSleepTimer, 1000);
   });
