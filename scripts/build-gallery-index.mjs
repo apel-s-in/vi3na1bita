@@ -123,8 +123,8 @@ async function processGalleryDir(absDir) {
   const sortedGroups = Array.from(imageGroups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   
   for (const [base, variants] of sortedGroups) {
-    // Выбираем лучший исходник для метаданных
-    const priorityOrder = ['.jpg', '.jpeg', '.png', '.webp', '.avif'];
+    // Выбираем лучший исходник для метаданных: сначала «оригиналы» (png/jpg), затем производные
+    const priorityOrder = ['.png', '.jpg', '.jpeg', '.webp', '.avif'];
     let sourceFile = variants[0];
     
     for (const ext of priorityOrder) {
