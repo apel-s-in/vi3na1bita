@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-740f53e3392ca8d7549e34f2a203bf5ec797b75e.idx
-│   │       ├── pack-740f53e3392ca8d7549e34f2a203bf5ec797b75e.pack
-│   │       └── pack-740f53e3392ca8d7549e34f2a203bf5ec797b75e.rev
+│   │       ├── pack-ef36d1c56429ba7227a99d266ce6db9d2d638a05.idx
+│   │       ├── pack-ef36d1c56429ba7227a99d266ce6db9d2d638a05.pack
+│   │       └── pack-ef36d1c56429ba7227a99d266ce6db9d2d638a05.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -99,15 +99,6 @@ vi3na1bita/
 │       │   ├── 00-cover-02.webp
 │       │   └── index.json
 │       ├── 01/
-│       │   ├── thumbs/
-│       │   │   ├── 01-cover-01-thumb.jpg
-│       │   │   ├── 01-cover-01-thumb.webp
-│       │   │   ├── 01-cover-02-thumb.jpg
-│       │   │   ├── 01-cover-02-thumb.webp
-│       │   │   ├── 01-cover-03-thumb.jpg
-│       │   │   ├── 01-cover-03-thumb.webp
-│       │   │   ├── 01-cover-04-thumb.jpg
-│       │   │   └── 01-cover-04-thumb.webp
 │       │   ├── 01-cover-01.avif
 │       │   ├── 01-cover-01.jpg
 │       │   ├── 01-cover-01.png
@@ -261,7 +252,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 16:00:28 UTC
+Сгенерировано: 2025-11-07 17:02:42 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -433,6 +424,14 @@ jobs:
       - name: Build gallery indexes
         run: node scripts/build-gallery-index.mjs
 
+      - name: Install build deps (sharp + fast-glob)
+        run: |
+          npm init -y >/dev/null 2>&1 || true
+          npm i -D sharp fast-glob
+
+      - name: Build gallery indexes
+        run: node scripts/build-gallery-index.mjs
+
       - name: Optimize JPEG & PNG (changed only)
         if: steps.diff.outputs.has_images == 'true'
         run: |
@@ -452,15 +451,31 @@ jobs:
             echo "generate-context.js not found, skip"
           fi
 
-      - name: Auto commit all changes (assets + gallery index + .meta + .nojekyll)
+      - name: Rebase onto latest remote
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin ${{ github.ref_name }} --depth=1 || true
+          git pull --rebase origin ${{ github.ref_name }} || true
+
+      - name: Auto commit changes (images + gallery index + .meta + .nojekyll)
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
           commit_message: "CI: optimize images and generate .meta"
           branch: ${{ github.ref_name }}
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
-          # Специально не указываем file_pattern — коммитим все изменения, проще сопровождать
-          skip_dirty_check: true  # Чтобы не фейлить, если ничего не изменилось
+          file_pattern: |
+            albums/gallery/**/*.jpg
+            albums/gallery/**/*.jpeg
+            albums/gallery/**/*.png
+            albums/gallery/**/*.webp
+            albums/gallery/**/*.avif
+            albums/gallery/**/index.json
+            .meta/**
+            .nojekyll
+          skip_dirty_check: true
+          push_options: '--force-with-lease'
 
 //=================================================
 // FILE: /.github/workflows/pages.yml
@@ -5556,6 +5571,11 @@ const HTML_EXT = new Set(['.html', '.htm']);
 const THUMBS_DIR = 'thumbs';
 const THUMB_WIDTH = 480;
 
+// Безопасные настройки Sharp: отключаем кэш и параллелизм, чтобы избежать
+// редких коллизий при последовательной генерации файлов в CI.
+sharp.cache(false);
+sharp.concurrency(1);
+
 async function ensureDir(p) { 
   await fs.mkdir(p, { recursive: true }); 
 }
@@ -5593,18 +5613,26 @@ async function getImageMeta(p) {
   }
 }
 
-async function convertIfMissing(srcPath, targetPath, fmt) {
-  // Всегда перегенерируем WebP/thumbs в билде — гарантируем свежие и правильные артефакты
+async function regenerateDerivative(srcPath, targetPath, kind) {
+  // Перегенерируем производные без переиспользования пайплайна,
+  // предварительно удаляя цель — исключаем «залипание» старых артефактов.
   try {
-    const image = sharp(srcPath);
-    if (fmt === 'webp') {
-      await image.webp({ quality: 80 }).toFile(targetPath);
-    } else if (fmt === 'thumb') {
-      await image.resize({ width: THUMB_WIDTH, withoutEnlargement: true }).jpeg({ quality: 80 }).toFile(targetPath);
+    await fs.rm(targetPath, { force: true }).catch(() => {});
+    if (kind === 'webp') {
+      await sharp(srcPath, { sequentialRead: true })
+        .toFormat('webp', { quality: 82 })
+        .toFile(targetPath);
+    } else if (kind === 'thumb') {
+      await sharp(srcPath, { sequentialRead: true })
+        .resize({ width: THUMB_WIDTH, withoutEnlargement: true })
+        .jpeg({ quality: 82 })
+        .toFile(targetPath);
+    } else {
+      throw new Error('Unknown derivative kind: ' + kind);
     }
     return true;
   } catch (e) {
-    console.warn('convert fail:', srcPath, '->', targetPath, e?.message);
+    console.warn('regenerateDerivative fail:', srcPath, '->', targetPath, e?.message);
     return false;
   }
 }
@@ -5667,8 +5695,8 @@ async function processGalleryDir(absDir) {
     const thumbPath = path.join(thumbsDir, `${base}-thumb.jpg`);
     
     await ensureDir(thumbsDir);
-    await convertIfMissing(sourceAbsPath, webpPath, 'webp');
-    await convertIfMissing(sourceAbsPath, thumbPath, 'thumb');
+    await regenerateDerivative(sourceAbsPath, webpPath, 'webp');
+    await regenerateDerivative(sourceAbsPath, thumbPath, 'thumb');
 
     // Получаем метаданные
     const meta = await getImageMeta(sourceAbsPath);
@@ -6441,8 +6469,8 @@ try { main(); } catch (e) { console.error("❌", e); process.exit(1); }
 // FILE: /.meta/ci-last.txt
 CI SUMMARY
 Repo: apel-s-in/vi3na1bita
-Workflow: Deploy to GitHub Pages
+Workflow: Optimize Images and Build Gallery Index
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19173488481
-Time: 2025-11-07 15:48:27 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19175311038
+Time: 2025-11-07 16:58:11 UTC
 
