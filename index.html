@@ -907,43 +907,15 @@
       const j = await r.json();
       const arr = Array.isArray(j.items) ? j.items : (Array.isArray(j) ? j : []);
       
-      // Группируем по базовому имени и выбираем лучший формат
-      const groups = new Map();
+      // Простая обработка - уже дедуплицировано в index.json
+      const out = [];
       for (const raw of arr) {
         const norm = normalizeGalleryItem(raw, baseDir);
-        if (!norm) continue;
-        
-        const url = (norm.formats?.full || norm.src || '').split('?')[0];
-        const name = url.split('/').pop() || '';
-        const base = name.replace(/\.(avif|webp|jpe?g|png)$/i, '').replace(/-thumb$/i, '');
-        
-        if (!groups.has(base)) {
-          groups.set(base, []);
-        }
-        groups.get(base).push(norm);
-      }
-      
-      // Выбираем лучший формат для каждого кадра
-      const out = [];
-      const formatPriority = ['webp', 'jpg', 'jpeg', 'png', 'avif'];
-      
-      for (const [base, items] of groups) {
-        if (items.length === 1) {
-          out.push(items[0]);
-        } else {
-          // Выбираем приоритетный формат
-          let best = items[0];
-          for (const fmt of formatPriority) {
-            const found = items.find(it => {
-              const url = it.formats?.full || it.src || '';
-              return url.toLowerCase().includes(`.${fmt}`);
-            });
-            if (found) {
-              best = found;
-              break;
-            }
+        if (norm) {
+          // Если есть id в raw, используем его для проверки уникальности
+          if (!raw.id || !out.some(item => item.id === raw.id)) {
+            out.push(norm);
           }
-          out.push(best);
         }
       }
       
@@ -1002,8 +974,22 @@
     } catch {}
   }
   function startCoverAutoPlay() {
-    if (coverAutoplay) clearInterval(coverAutoplay);
-    coverAutoplay = setInterval(() => setCoverImage(coverGalleryIdx + 1), 5000);
+    if (coverAutoplay) {
+      clearInterval(coverAutoplay);
+      coverAutoplay = null;
+    }
+    
+    // Проверяем, что галерея готова
+    if (!Array.isArray(coverGalleryArr) || coverGalleryArr.length <= 1) {
+      return;
+    }
+    
+    coverAutoplay = setInterval(() => {
+      // Дополнительная проверка перед переключением
+      if (Array.isArray(coverGalleryArr) && coverGalleryArr.length > 1) {
+        setCoverImage(coverGalleryIdx + 1);
+      }
+    }, 5000);
     galleryRotationStarted = true;
   }
 
@@ -1278,7 +1264,15 @@
     const meta = albumByKey(key);
     if (!meta) { NotificationSystem.error('Альбом не найден'); return; }
 
+    // Очистка памяти от предыдущего альбома
+    if (typeof gc === 'function') gc(); // Если доступен garbage collector
+    
     resetGallery();
+    
+    // Очищаем кэш изображений
+    if (prefetchedUrls.size > 0) {
+      prefetchedUrls.clear();
+    }
 
     currentAlbumKey = key;
     const base = normalizeBase(meta.base);
