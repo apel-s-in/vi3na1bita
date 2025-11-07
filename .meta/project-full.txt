@@ -55,9 +55,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-be1dcb32ac77ac323688cf0424decbc7b27ebd6d.idx
-│   │       ├── pack-be1dcb32ac77ac323688cf0424decbc7b27ebd6d.pack
-│   │       └── pack-be1dcb32ac77ac323688cf0424decbc7b27ebd6d.rev
+│   │       ├── pack-393c6813ebf9fcff144fb1adc01b4c055765ad70.idx
+│   │       ├── pack-393c6813ebf9fcff144fb1adc01b4c055765ad70.pack
+│   │       └── pack-393c6813ebf9fcff144fb1adc01b4c055765ad70.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -224,7 +224,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 20:21:49 UTC
+Сгенерировано: 2025-11-07 20:23:56 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -4771,7 +4771,7 @@ ${lines}
    Офлайн-пакеты: через сообщения OFFLINE_CACHE_ADD / OFFLINE_CACHE_CLEAR_CURRENT с прогрессом.
 */
 
-const SW_VERSION = '8.0.1';
+const SW_VERSION = '8.0.2';
 const CORE_CACHE = `core-${SW_VERSION}`;
 const RUNTIME_CACHE = `runtime-${SW_VERSION}`;
 const MEDIA_CACHE = `media-${SW_VERSION}`;
@@ -4781,6 +4781,8 @@ const META_CACHE = `meta-${SW_VERSION}`;
 const CORE_ASSETS = [
   './',
   './index.html',
+  './news.html',
+  './news/news.json',
   './manifest.json',
   './img/logo.png',
   './img/star.png',
@@ -4873,6 +4875,25 @@ self.addEventListener('fetch', (event) => {
         const cached = await cache.match(request) || await cache.match('./index.html');
         if (cached) return cached;
         return new Response('Offline', { status: 503, statusText: 'Offline' });
+      }
+    })());
+    return;
+  }
+
+  // Страницы/данные «Новости»: cache-first
+  if (request.url.endsWith('/news.html') || request.url.includes('/news/news.json')) {
+    event.respondWith((async () => {
+      const cache = await caches.open(RUNTIME_CACHE);
+      const cached = await cache.match(request);
+      if (cached) return cached;
+      try {
+        const netRes = await fetch(request);
+        if (netRes && netRes.ok) {
+          cache.put(request, netRes.clone()).catch(() => {});
+        }
+        return netRes;
+      } catch {
+        return cached || new Response('', { status: 404 });
       }
     })());
     return;
@@ -5910,6 +5931,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19179224936
-Time: 2025-11-07 19:37:31 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19180236263
+Time: 2025-11-07 20:22:20 UTC
 
