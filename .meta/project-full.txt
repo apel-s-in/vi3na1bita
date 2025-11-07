@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-38218918d233a4b765aabf60f41ccbc56d76cb15.idx
-│   │       ├── pack-38218918d233a4b765aabf60f41ccbc56d76cb15.pack
-│   │       └── pack-38218918d233a4b765aabf60f41ccbc56d76cb15.rev
+│   │       ├── pack-2ea6113220bbd9454be3ff89061656bfcb2e127c.idx
+│   │       ├── pack-2ea6113220bbd9454be3ff89061656bfcb2e127c.pack
+│   │       └── pack-2ea6113220bbd9454be3ff89061656bfcb2e127c.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -83,11 +83,9 @@ vi3na1bita/
 ├── albums/
 │   └── gallery/
 │       ├── 00/
-│       │   ├── 00-cover-01.avif
 │       │   ├── 00-cover-01.jpg
 │       │   ├── 00-cover-01.png
 │       │   ├── 00-cover-01.webp
-│       │   ├── 00-cover-02.avif
 │       │   ├── 00-cover-02.jpg
 │       │   ├── 00-cover-02.png
 │       │   ├── 00-cover-02.webp
@@ -237,7 +235,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 18:11:29 UTC
+Сгенерировано: 2025-11-07 18:12:02 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -5883,7 +5881,7 @@ try { main(); } catch (e) { console.error("❌", e); process.exit(1); }
 CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
-Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177089927
-Time: 2025-11-07 18:09:04 UTC
+Status: cancelled
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177164065
+Time: 2025-11-07 18:11:51 UTC
 
