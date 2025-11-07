@@ -2,7 +2,7 @@ name: Collect critical CI logs
 
 on:
   workflow_run:
-    workflows: [ "Deploy to GitHub Pages", "Optimize Images and Build Gallery Index" ]
+    workflows: [ "Deploy to GitHub Pages" ]
     types: [ completed ]
   workflow_dispatch:
 
