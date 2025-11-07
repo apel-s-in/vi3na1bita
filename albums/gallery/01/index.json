@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "formats": {
+        "webp": "albums/gallery/01/01-cover-01.webp",
+        "full": "albums/gallery/01/01-cover-01.png"
+      }
+    },
+    {
+      "formats": {
+        "webp": "albums/gallery/01/01-cover-02.webp",
+        "full": "albums/gallery/01/01-cover-02.png"
+      }
+    },
+    {
+      "formats": {
+        "webp": "albums/gallery/01/01-cover-03.webp",
+        "full": "albums/gallery/01/01-cover-03.png"
+      }
+    },
+    {
+      "formats": {
+        "webp": "albums/gallery/01/01-cover-04.webp",
+        "full": "albums/gallery/01/01-cover-04.png"
+      }
+    }
+  ]
+}
