@@ -94,3 +94,4 @@ jobs:
           commit_user_name: github-actions[bot]
           commit_user_email: github-actions[bot]@users.noreply.github.com
           # Специально не указываем file_pattern — коммитим все изменения, проще сопровождать
+          skip_dirty_check: true  # Чтобы не фейлить, если ничего не изменилось
