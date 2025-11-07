@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-6233c2115e30aec9ddd640dfa515d88fb2edf9b7.idx
-│   │       ├── pack-6233c2115e30aec9ddd640dfa515d88fb2edf9b7.pack
-│   │       └── pack-6233c2115e30aec9ddd640dfa515d88fb2edf9b7.rev
+│   │       ├── pack-efefe85b3377f3ef0dde75447ed78b59d2673e04.idx
+│   │       ├── pack-efefe85b3377f3ef0dde75447ed78b59d2673e04.pack
+│   │       └── pack-efefe85b3377f3ef0dde75447ed78b59d2673e04.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -244,7 +244,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 17:29:19 UTC
+Сгенерировано: 2025-11-07 17:30:16 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -5508,8 +5508,8 @@ async function processGalleryDir(absDir) {
   const sortedGroups = Array.from(imageGroups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   
   for (const [base, variants] of sortedGroups) {
-    // Выбираем лучший исходник для метаданных
-    const priorityOrder = ['.jpg', '.jpeg', '.png', '.webp', '.avif'];
+    // Выбираем лучший исходник для метаданных: сначала «оригиналы» (png/jpg), затем производные
+    const priorityOrder = ['.png', '.jpg', '.jpeg', '.webp', '.avif'];
     let sourceFile = variants[0];
     
     for (const ext of priorityOrder) {
