@@ -83,10 +83,16 @@ async function processGalleryDir(absDir) {
   }
 
   for (const [base, variants] of Array.from(byBase.entries()).sort((a, b) => a[0].localeCompare(b[0]))) {
-    // Выбираем лучший исходник
-    const pick = SRC_ORDER.find(ext => variants.some(v => v.ext === ext)) || variants[0].ext;
-    const chosen = variants.find(v => v.ext === pick) || variants[0];
-
+    // Пропускаем дубликаты форматов одного изображения
+    if (variants.length > 1) {
+      // Если есть несколько форматов одного изображения, берём приоритетный
+      const pick = SRC_ORDER.find(ext => variants.some(v => v.ext === ext)) || variants[0].ext;
+      const chosen = variants.find(v => v.ext === pick) || variants[0];
+      variants.length = 0;
+      variants.push(chosen);
+    }
+    
+    const chosen = variants[0];
     const fm = toFormats(absDir, chosen.name);
     if (!fm) continue;
 
@@ -96,10 +102,27 @@ async function processGalleryDir(absDir) {
     await convertIfMissing(fm.fullAbs, fm.thumbAbs, 'thumb');
 
     const meta = await getImageMeta(fm.fullAbs);
-    // Полноразмер для показа — WebP; 'full' = webp
+    
+    // Собираем все доступные форматы для одного изображения
+    const formats = { 
+      full: fm.full,
+      webp: fm.webp,
+      thumb: fm.thumb 
+    };
+    
+    // AVIF если есть
+    const avifPath = path.join(absDir, `${base}.avif`);
+    if (await fileExists(avifPath)) {
+      formats.avif = asRel(avifPath);
+    }
+    
+    // Добавляем ОДИН элемент с ВСЕМИ форматами
     items.push({
-      formats: { full: fm.webp, webp: fm.webp, thumb: fm.thumb },
-      width: meta.width, height: meta.height, size: meta.size
+      id: base,
+      formats,
+      width: meta.width, 
+      height: meta.height, 
+      size: meta.size
     });
   }
 
