@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-3a68adb32882b090b7a427559790c51fe510fb0a.idx
-│   │       ├── pack-3a68adb32882b090b7a427559790c51fe510fb0a.pack
-│   │       └── pack-3a68adb32882b090b7a427559790c51fe510fb0a.rev
+│   │       ├── pack-0c7fa141cd2f3fc2c1f5b3ad80e687ff4fc5c1b3.idx
+│   │       ├── pack-0c7fa141cd2f3fc2c1f5b3ad80e687ff4fc5c1b3.pack
+│   │       └── pack-0c7fa141cd2f3fc2c1f5b3ad80e687ff4fc5c1b3.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -261,7 +261,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 15:29:37 UTC
+Сгенерировано: 2025-11-07 15:36:33 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -410,12 +410,19 @@ jobs:
             echo "has_images=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Install tools (jpegoptim, optipng, webp, ImageMagick, Node)
+      - name: Install image optimization tools
         run: |
           sudo apt-get update
           sudo apt-get install -y jpegoptim optipng webp imagemagick
-          curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-          sudo apt-get install -y nodejs
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Verify Node and npm
+        run: |
           node --version
           npm --version
 
@@ -6428,6 +6435,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Optimize Images and Build Gallery Index
 Status: failure
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19172962422
-Time: 2025-11-07 15:28:38 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19173009888
+Time: 2025-11-07 15:30:48 UTC
 
