@@ -1298,9 +1298,8 @@
     resetGallery();
     
     // Очищаем кэш изображений
-    if (prefetchedUrls.size > 0) {
-      prefetchedUrls.clear();
-    }
+    if (prefetchedUrls.size > 0) prefetchedUrls.clear();
+    if (prefetchedFullUrls.size > 0) prefetchedFullUrls.clear();
 
     currentAlbumKey = key;
     const base = normalizeBase(meta.base);
@@ -1380,9 +1379,9 @@
   }
 
   async function applyAlbumConfig(base, data, { skipCovers = false, signal } = {}) {
-    try {
       if (data.background) {
-        document.body.style.background = `url(${absJoin(base, data.background)}) center/cover fixed #111`;
+        const attach = isMobileUA() ? '' : ' fixed';
+        document.body.style.background = `url(${absJoin(base, data.background)}) center/cover${attach} #111`;
       } else {
         document.body.style.background = `#181818`;
       }
@@ -2030,7 +2029,40 @@
 
   /* Плеер */
   function getCurrentAudio() { return __currentAudio || document.getElementById('audio') || null; }
-  function stopAndCleanupAudio(a) { if (!a) return; try{a.pause();}catch{} try{a.currentTime=0;}catch{} try{a.removeAttribute('src'); a.load();}catch{} }
+
+  // Единое управление слушателями audio — чтобы не копились при каждом ререндере
+  let __audioHandlers = null;
+  function detachAudioEventListeners(audio) {
+    if (!audio || !__audioHandlers) return;
+    try { audio.removeEventListener('loadedmetadata', __audioHandlers.onLoaded); } catch {}
+    try { audio.removeEventListener('timeupdate', __audioHandlers.onTime); } catch {}
+    try { audio.removeEventListener('ended', __audioHandlers.onEnded); } catch {}
+    try { audio.onplay = null; audio.onpause = null; } catch {}
+    __audioHandlers = null;
+  }
+  function attachAudioEventListeners(audio) {
+    if (!audio) return;
+    detachAudioEventListeners(audio);
+    const onLoaded = onAudioMetadataLoaded;
+    const onTime   = onAudioTimeUpdate;
+    const onEnded  = onAudioEnded;
+    audio.addEventListener('loadedmetadata', onLoaded);
+    audio.addEventListener('timeupdate',     onTime);
+    audio.addEventListener('ended',          onEnded);
+    // playbackState обновляем через onplay/onpause (переприсваивается, не накапливается)
+    audio.onplay  = () => { try { navigator.mediaSession.playbackState = 'playing'; } catch {} };
+    audio.onpause = () => { try { navigator.mediaSession.playbackState = 'paused';  } catch {} };
+    __audioHandlers = { onLoaded, onTime, onEnded };
+  }
+
+  function stopAndCleanupAudio(a) {
+    if (!a) return;
+    try { detachAudioEventListeners(a); } catch {}
+    try { a.pause(); } catch {}
+    try { a.currentTime = 0; } catch {}
+    try { a.removeAttribute('src'); a.load(); } catch {}
+  }
+
   function dedupePlayerBlock() {
     try {
       const nodes = Array.from(document.querySelectorAll('#lyricsplayerblock'));
@@ -2160,9 +2192,8 @@
     initializePlayerControls();
     prefetchNextTrackAssetsForPlayback();
 
-    audioEl.addEventListener('loadedmetadata', onAudioMetadataLoaded);
-    audioEl.addEventListener('timeupdate', onAudioTimeUpdate);
-    audioEl.addEventListener('ended', onAudioEnded);
+    detachAudioEventListeners(audioEl);
+    attachAudioEventListeners(audioEl);
 
     applyMiniModeUI();
     updateNextUpLabel();
@@ -2321,7 +2352,7 @@
       const remainingEl = document.getElementById('time-remaining');
       if (elapsedEl) elapsedEl.textContent = formatTime(currentTime);
       if (remainingEl) remainingEl.textContent = formatTime(Math.max(0, duration - currentTime));
-      try { PlayerState.save(); } catch {}
+      try { savePlayerStateThrottled(false); } catch {}
     }
     updatePlayPauseIcon();
   }
@@ -2760,8 +2791,9 @@
   function attachPlaybackStateListeners() {
     const a = document.getElementById('audio');
     if (!a || !('mediaSession' in navigator)) return;
-    a.addEventListener('play',  () => { try { navigator.mediaSession.playbackState = 'playing'; } catch {} });
-    a.addEventListener('pause', () => { try { navigator.mediaSession.playbackState = 'paused';  } catch {} });
+    // Перенесено в attachAudioEventListeners (через onplay/onpause), чтобы не множить слушатели
+    a.onplay  = () => { try { navigator.mediaSession.playbackState = 'playing'; } catch {} };
+    a.onpause = () => { try { navigator.mediaSession.playbackState = 'paused';  } catch {} };
   }
   function toggleLikePlaying() {
     if (!playingTracks || playingTrack < 0) return;
@@ -3617,6 +3649,14 @@ ${lines}
   }
 
   /* ====== Player State ====== */
+  // Троттлинг сохранений, чтобы не писать в localStorage каждую секунду
+  let __psSaveTs = 0;
+  function savePlayerStateThrottled(force = false) {
+    const now = Date.now();
+    if (!force && (now - __psSaveTs) < 5000) return;
+    __psSaveTs = now;
+      try { savePlayerStateThrottled(false); } catch {}
+  }
   const PlayerState = {
     key: 'playerStateV1',
     save() {
