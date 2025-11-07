@@ -57,7 +57,7 @@ async function getImageMeta(p) {
 }
 
 async function convertIfMissing(srcPath, targetPath, fmt) {
-  if (await fileExists(targetPath)) return true;
+  // Всегда перегенерируем WebP/thumbs в билде — гарантируем свежие и правильные артефакты
   try {
     const image = sharp(srcPath);
     if (fmt === 'webp') {
@@ -67,7 +67,7 @@ async function convertIfMissing(srcPath, targetPath, fmt) {
     }
     return true;
   } catch (e) {
-    console.warn('convertIfMissing fail:', srcPath, '->', targetPath, e?.message);
+    console.warn('convert fail:', srcPath, '->', targetPath, e?.message);
     return false;
   }
 }
