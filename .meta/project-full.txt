@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-98f24c13ee4fbca89ad941965e68a76b8ec7d441.idx
-│   │       ├── pack-98f24c13ee4fbca89ad941965e68a76b8ec7d441.pack
-│   │       └── pack-98f24c13ee4fbca89ad941965e68a76b8ec7d441.rev
+│   │       ├── pack-c94286124ad8b341fce77f9f06ca81655cffbbc8.idx
+│   │       ├── pack-c94286124ad8b341fce77f9f06ca81655cffbbc8.pack
+│   │       └── pack-c94286124ad8b341fce77f9f06ca81655cffbbc8.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 18:26:25 UTC
+Сгенерировано: 2025-11-07 18:29:06 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -478,42 +478,16 @@ jobs:
 // FILE: /albums/gallery/news/index.json
 {
   "items": [
-    {
-      "type": "html",
-      "src": "albums/gallery/news/news-01-baner.html"
-    },
+    { "type": "html", "src": "albums/gallery/news/news-01-baner.html" },
     {
       "formats": {
-        "full": "albums/gallery/news/news-cover-02.avif",
         "webp": "albums/gallery/news/news-cover-02.webp",
-        "avif": "albums/gallery/news/news-cover-02.avif"
-      },
-      "width": 1024,
-      "height": 1024,
-      "size": 44017
-    },
-    {
-      "formats": {
-        "full": "albums/gallery/news/news-cover-02.png",
-        "webp": "albums/gallery/news/news-cover-02.webp",
-        "avif": "albums/gallery/news/news-cover-02.avif"
-      },
-      "width": 1024,
-      "height": 1024,
-      "size": 1650767
-    },
-    {
-      "formats": {
-        "full": "albums/gallery/news/news-cover-02.webp",
-        "webp": "albums/gallery/news/news-cover-02.webp",
-        "avif": "albums/gallery/news/news-cover-02.avif"
-      },
-      "width": 1024,
-      "height": 1024,
-      "size": 139078
+        "full": "albums/gallery/news/news-cover-02.png"
+      }
     }
   ]
 }
+
 //=================================================
 // FILE: /custom.json
 {
@@ -5769,6 +5743,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177465294
-Time: 2025-11-07 18:23:53 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177542575
+Time: 2025-11-07 18:26:55 UTC
 
