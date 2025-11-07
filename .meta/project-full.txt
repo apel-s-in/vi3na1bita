@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-f9cc7cc01ef04ea75e32c91af8251c4e3d839d77.idx
-│   │       ├── pack-f9cc7cc01ef04ea75e32c91af8251c4e3d839d77.pack
-│   │       └── pack-f9cc7cc01ef04ea75e32c91af8251c4e3d839d77.rev
+│   │       ├── pack-b9de1fc2bdca9d76c9e2c8ba5c8d4f5c65bf9bf1.idx
+│   │       ├── pack-b9de1fc2bdca9d76c9e2c8ba5c8d4f5c65bf9bf1.pack
+│   │       └── pack-b9de1fc2bdca9d76c9e2c8ba5c8d4f5c65bf9bf1.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -90,6 +90,19 @@ vi3na1bita/
 │       │   ├── 00-cover-02.png
 │       │   ├── 00-cover-02.webp
 │       │   └── index.json
+│       ├── 01/
+│       │   ├── 01-cover-01.jpg
+│       │   ├── 01-cover-01.png
+│       │   ├── 01-cover-01.webp
+│       │   ├── 01-cover-02.jpg
+│       │   ├── 01-cover-02.png
+│       │   ├── 01-cover-02.webp
+│       │   ├── 01-cover-03.jpg
+│       │   ├── 01-cover-03.png
+│       │   ├── 01-cover-03.webp
+│       │   ├── 01-cover-04.jpg
+│       │   ├── 01-cover-04.png
+│       │   └── 01-cover-04.webp
 │       └── news/
 │           ├── thumbs/
 │           │   ├── news-cover-02-thumb.jpg
@@ -198,7 +211,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 18:13:00 UTC
+Сгенерировано: 2025-11-07 18:17:34 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -5678,7 +5691,7 @@ try { main(); } catch (e) { console.error("❌", e); process.exit(1); }
 CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
-Status: cancelled
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177164065
-Time: 2025-11-07 18:11:51 UTC
+Status: success
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19177202160
+Time: 2025-11-07 18:13:26 UTC
 
