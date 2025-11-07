@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-4575b5f22d4bae63eb062e7c15002b4f3abb572b.idx
-│   │       ├── pack-4575b5f22d4bae63eb062e7c15002b4f3abb572b.pack
-│   │       └── pack-4575b5f22d4bae63eb062e7c15002b4f3abb572b.rev
+│   │       ├── pack-39f73012bc6067f6de881217098de084345876eb.idx
+│   │       ├── pack-39f73012bc6067f6de881217098de084345876eb.pack
+│   │       └── pack-39f73012bc6067f6de881217098de084345876eb.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -243,14 +243,14 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 18:05:44 UTC
+Сгенерировано: 2025-11-07 18:06:26 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
 
 on:
   workflow_run:
-    workflows: [ "Deploy to GitHub Pages", "Optimize Images and Build Gallery Index" ]
+    workflows: [ "Deploy to GitHub Pages" ]
     types: [ completed ]
   workflow_dispatch:
 
