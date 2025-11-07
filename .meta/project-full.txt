@@ -55,9 +55,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-7961462178b0d38b02b42319ee91ff07c6d23fc4.idx
-│   │       ├── pack-7961462178b0d38b02b42319ee91ff07c6d23fc4.pack
-│   │       └── pack-7961462178b0d38b02b42319ee91ff07c6d23fc4.rev
+│   │       ├── pack-cf4e8b840cc7409f89f9768661262c9366c48955.idx
+│   │       ├── pack-cf4e8b840cc7409f89f9768661262c9366c48955.pack
+│   │       └── pack-cf4e8b840cc7409f89f9768661262c9366c48955.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -224,7 +224,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 19:34:19 UTC
+Сгенерировано: 2025-11-07 19:35:39 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -2030,6 +2030,7 @@ generateIndex();
   }
 
   async function applyAlbumConfig(base, data, { skipCovers = false, signal } = {}) {
+    try {
       if (data.background) {
         const attach = isMobileUA() ? '' : ' fixed';
         document.body.style.background = `url(${absJoin(base, data.background)}) center/cover${attach} #111`;
@@ -4306,7 +4307,7 @@ ${lines}
     const now = Date.now();
     if (!force && (now - __psSaveTs) < 5000) return;
     __psSaveTs = now;
-      try { savePlayerStateThrottled(false); } catch {}
+    try { PlayerState.save(); } catch {}
   }
   const PlayerState = {
     key: 'playerStateV1',
@@ -5837,6 +5838,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19178889760
-Time: 2025-11-07 19:22:57 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19179163240
+Time: 2025-11-07 19:34:41 UTC
 
