@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-717c88067adbf424fc2fe7fb3dfedef58a1cb799.idx
-│   │       ├── pack-717c88067adbf424fc2fe7fb3dfedef58a1cb799.pack
-│   │       └── pack-717c88067adbf424fc2fe7fb3dfedef58a1cb799.rev
+│   │       ├── pack-98f24c13ee4fbca89ad941965e68a76b8ec7d441.idx
+│   │       ├── pack-98f24c13ee4fbca89ad941965e68a76b8ec7d441.pack
+│   │       └── pack-98f24c13ee4fbca89ad941965e68a76b8ec7d441.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -102,7 +102,8 @@ vi3na1bita/
 │       │   ├── 01-cover-03.webp
 │       │   ├── 01-cover-04.jpg
 │       │   ├── 01-cover-04.png
-│       │   └── 01-cover-04.webp
+│       │   ├── 01-cover-04.webp
+│       │   └── index.json
 │       ├── 02/
 │       │   ├── 02-cover-01.jpg
 │       │   ├── 02-cover-01.png
@@ -225,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 18:23:24 UTC
+Сгенерировано: 2025-11-07 18:26:25 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -406,6 +407,37 @@ jobs:
       "formats": {
         "webp": "albums/gallery/00/00-cover-02.webp",
         "full": "albums/gallery/00/00-cover-02.png"
+      }
+    }
+  ]
+}
+
+//=================================================
+// FILE: /albums/gallery/01/index.json
+{
+  "items": [
+    {
+      "formats": {
+        "webp": "albums/gallery/01/01-cover-01.webp",
+        "full": "albums/gallery/01/01-cover-01.png"
+      }
+    },
+    {
+      "formats": {
+        "webp": "albums/gallery/01/01-cover-02.webp",
+        "full": "albums/gallery/01/01-cover-02.png"
+      }
+    },
+    {
+      "formats": {
+        "webp": "albums/gallery/01/01-cover-03.webp",
+        "full": "albums/gallery/01/01-cover-03.png"
+      }
+    },
+    {
+      "formats": {
+        "webp": "albums/gallery/01/01-cover-04.webp",
+        "full": "albums/gallery/01/01-cover-04.png"
       }
     }
   ]
