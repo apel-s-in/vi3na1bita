@@ -55,9 +55,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-393c6813ebf9fcff144fb1adc01b4c055765ad70.idx
-│   │       ├── pack-393c6813ebf9fcff144fb1adc01b4c055765ad70.pack
-│   │       └── pack-393c6813ebf9fcff144fb1adc01b4c055765ad70.rev
+│   │       ├── pack-f551d44fdee2cedf3656a67bd61708faf1e559d8.idx
+│   │       ├── pack-f551d44fdee2cedf3656a67bd61708faf1e559d8.pack
+│   │       └── pack-f551d44fdee2cedf3656a67bd61708faf1e559d8.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -224,7 +224,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 20:23:56 UTC
+Сгенерировано: 2025-11-07 20:30:19 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -2311,15 +2311,7 @@ generateIndex();
         setCoverImage(coverGalleryIdx + 1);
         startCoverAutoPlay();
       };
-        if (!coverGalleryArr.length) return;
-        setCoverImage(coverGalleryIdx - 1);
-        startCoverAutoPlay();
-      };
-      document.getElementById('cover-gallery-arrow-right').onclick = () => {
-        if (!coverGalleryArr.length) return;
-        setCoverImage(coverGalleryIdx + 1);
-        startCoverAutoPlay();
-      };
+
       let startX = null;
       const el = document.getElementById('cover-wrap');
       el.addEventListener('touchstart', e => { startX = e.touches[0].clientX; }, { passive: true });
@@ -5931,6 +5923,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19180236263
-Time: 2025-11-07 20:22:20 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19180301901
+Time: 2025-11-07 20:25:04 UTC
 
