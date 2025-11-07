@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-8ec8d3e14f112252b3cde800b8131c489efbfbab.idx
-│   │       ├── pack-8ec8d3e14f112252b3cde800b8131c489efbfbab.pack
-│   │       └── pack-8ec8d3e14f112252b3cde800b8131c489efbfbab.rev
+│   │       ├── pack-5da0f02b787793161801368ac19eedd4fa9da2dd.idx
+│   │       ├── pack-5da0f02b787793161801368ac19eedd4fa9da2dd.pack
+│   │       └── pack-5da0f02b787793161801368ac19eedd4fa9da2dd.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -261,7 +261,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-07 13:25:51 UTC
+Сгенерировано: 2025-11-07 13:28:38 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -2085,43 +2085,15 @@ generateIndex();
       const j = await r.json();
       const arr = Array.isArray(j.items) ? j.items : (Array.isArray(j) ? j : []);
       
-      // Группируем по базовому имени и выбираем лучший формат
-      const groups = new Map();
+      // Простая обработка - уже дедуплицировано в index.json
+      const out = [];
       for (const raw of arr) {
         const norm = normalizeGalleryItem(raw, baseDir);
-        if (!norm) continue;
-        
-        const url = (norm.formats?.full || norm.src || '').split('?')[0];
-        const name = url.split('/').pop() || '';
-        const base = name.replace(/\.(avif|webp|jpe?g|png)$/i, '').replace(/-thumb$/i, '');
-        
-        if (!groups.has(base)) {
-          groups.set(base, []);
-        }
-        groups.get(base).push(norm);
-      }
-      
-      // Выбираем лучший формат для каждого кадра
-      const out = [];
-      const formatPriority = ['webp', 'jpg', 'jpeg', 'png', 'avif'];
-      
-      for (const [base, items] of groups) {
-        if (items.length === 1) {
-          out.push(items[0]);
-        } else {
-          // Выбираем приоритетный формат
-          let best = items[0];
-          for (const fmt of formatPriority) {
-            const found = items.find(it => {
-              const url = it.formats?.full || it.src || '';
-              return url.toLowerCase().includes(`.${fmt}`);
-            });
-            if (found) {
-              best = found;
-              break;
-            }
+        if (norm) {
+          // Если есть id в raw, используем его для проверки уникальности
+          if (!raw.id || !out.some(item => item.id === raw.id)) {
+            out.push(norm);
           }
-          out.push(best);
         }
       }
       
@@ -2180,8 +2152,22 @@ generateIndex();
     } catch {}
   }
   function startCoverAutoPlay() {
-    if (coverAutoplay) clearInterval(coverAutoplay);
-    coverAutoplay = setInterval(() => setCoverImage(coverGalleryIdx + 1), 5000);
+    if (coverAutoplay) {
+      clearInterval(coverAutoplay);
+      coverAutoplay = null;
+    }
+    
+    // Проверяем, что галерея готова
+    if (!Array.isArray(coverGalleryArr) || coverGalleryArr.length <= 1) {
+      return;
+    }
+    
+    coverAutoplay = setInterval(() => {
+      // Дополнительная проверка перед переключением
+      if (Array.isArray(coverGalleryArr) && coverGalleryArr.length > 1) {
+        setCoverImage(coverGalleryIdx + 1);
+      }
+    }, 5000);
     galleryRotationStarted = true;
   }
 
@@ -2456,7 +2442,15 @@ generateIndex();
     const meta = albumByKey(key);
     if (!meta) { NotificationSystem.error('Альбом не найден'); return; }
 
+    // Очистка памяти от предыдущего альбома
+    if (typeof gc === 'function') gc(); // Если доступен garbage collector
+    
     resetGallery();
+    
+    // Очищаем кэш изображений
+    if (prefetchedUrls.size > 0) {
+      prefetchedUrls.clear();
+    }
 
     currentAlbumKey = key;
     const base = normalizeBase(meta.base);
@@ -6390,8 +6384,8 @@ try { main(); } catch (e) { console.error("❌", e); process.exit(1); }
 // FILE: /.meta/ci-last.txt
 CI SUMMARY
 Repo: apel-s-in/vi3na1bita
-Workflow: Deploy to GitHub Pages
-Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19169466817
-Time: 2025-11-07 13:14:35 UTC
+Workflow: Optimize Images and Build Gallery Index
+Status: failure
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19169780406
+Time: 2025-11-07 13:26:52 UTC
 
