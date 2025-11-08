@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-733b887ccb480f481df9a106c0bf28c65d41f747.idx
-│   │       ├── pack-733b887ccb480f481df9a106c0bf28c65d41f747.pack
-│   │       └── pack-733b887ccb480f481df9a106c0bf28c65d41f747.rev
+│   │       ├── pack-7beeac4f060a7f3b43f2364ce5f88f64007a8823.idx
+│   │       ├── pack-7beeac4f060a7f3b43f2364ce5f88f64007a8823.pack
+│   │       └── pack-7beeac4f060a7f3b43f2364ce5f88f64007a8823.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 13:35:40 UTC
+Сгенерировано: 2025-11-08 16:35:21 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -2157,7 +2157,52 @@ generateIndex();
     const cw = document.getElementById('cover-wrap');
     if (cw) cw.style.display = visible ? '' : 'none';
   }
+  function isIOS() {
+    return /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  }
 
+  function initAudioContextForBackground() {
+    try {
+      // Создаем AudioContext с правильными параметрами для iOS
+      window.__audioContext = new (window.AudioContext || window.webkitAudioContext)({
+        latencyHint: 'playback',
+        sampleRate: 44100
+      });
+    
+      // Гарантируем, что контекст не будет приостановлен
+      window.__audioContext.onstatechange = () => {
+        if (window.__audioContext.state === 'suspended') {
+          window.__audioContext.resume().catch(console.warn);
+        }
+      };
+    
+      // Создаем "тихий" осциллятор для удержания аудио в фоне
+      const oscillator = window.__audioContext.createOscillator();
+      const gainNode = window.__audioContext.createGain();
+      oscillator.connect(gainNode);
+      gainNode.connect(window.__audioContext.destination);
+      gainNode.gain.value = 0.00001; // почти бесшумный
+      oscillator.start(0);
+    
+      // Сохраняем ссылки для управления
+      window.__backgroundOscillator = oscillator;
+      window.__backgroundGainNode = gainNode;
+    
+      console.log('iOS AudioContext initialized for background playback');
+    } catch (e) {
+      console.warn('Failed to initialize iOS AudioContext', e);
+    }
+  }
+
+  function resumeAudioContextIfNeeded() {
+    try {
+      if (window.__audioContext && window.__audioContext.state === 'suspended') {
+        window.__audioContext.resume().catch(console.warn);
+      }
+    } catch (e) {
+      console.warn('Failed to resume audio context', e);
+    }
+  }
   // Заглушка для ещё не вышедшего альбома (нет config.json)
   function renderComingSoonPlaceholder(title){
     try {
@@ -2488,36 +2533,110 @@ generateIndex();
         });
       }
 
-      document.addEventListener('visibilitychange', () => {
+      document.addEventListener('visibilitychange', async () => {
         const a = document.getElementById('audio');
-
-        if (document.hidden) {
-          // Запомним, играл ли плеер до ухода в фон (чтобы не автозапускать затем)
-          try { __wasPlayingBeforeHidden = !!(a && !a.paused); } catch { __wasPlayingBeforeHidden = false; }
-
-          // Стоп автопрокрутки галереи
+        const isHidden = document.hidden;
+  
+        if (isHidden) {
+          // Сохраняем текущее состояние
+          __wasPlayingBeforeHidden = !!(a && !a.paused);
+          __savedResumePosition = a ? a.currentTime : 0;
+    
+          // Останавливаем UI-анимации для экономии ресурсов
           if (coverAutoplay) { clearInterval(coverAutoplay); coverAutoplay = null; }
-          // Пауза анимации лирики (запомним, если была активна)
-          if (animationEnabled) { window.__resumeAnimationOnFocus = true; applyAnimationState(false); }
-          // Выгрузим аудио‑граф «бита», чтобы не грел телефон
-          if (bitEnabled) { stopLogoPulsation(); }
+          if (animationEnabled) { 
+            window.__savedAnimationState = animationEnabled;
+            applyAnimationState(false);
+          }
+          if (bitEnabled) { 
+            window.__savedBitState = bitEnabled;
+            stopLogoPulsation(); 
+          }
+    
+          // Для iOS - гарантируем, что воспроизведение продолжится
+          if (isIOS() && __wasPlayingBeforeHidden) {
+            resumeAudioContextIfNeeded();
+            // Дополнительная проверка через 1с
+            setTimeout(() => {
+              if (document.hidden && a && a.paused) {
+                a.play().catch(e => console.warn('iOS background resume failed', e));
+              }
+            }, 1000);
+          }
+    
+          console.log('App going to background, position saved:', __savedResumePosition);
         } else {
+          // Восстанавливаем состояние из фона
           checkSleepTimer();
-
-          // Синхронизируем UI c фактическим воспроизведением
+    
+          // iOS требует возобновления аудио-контекста
+          if (isIOS()) {
+            resumeAudioContextIfNeeded();
+          }
+    
+          // Если музыка играла до ухода в фон и не остановлена таймером сна
+          if (__wasPlayingBeforeHidden && !sleepTimerTarget) {
+            if (a) {
+              // Восстанавливаем позицию
+              if (typeof __savedResumePosition === 'number' && !isNaN(__savedResumePosition)) {
+                try {
+                  a.currentTime = __savedResumePosition;
+                } catch (e) {
+                  console.warn('Failed to restore audio position', e);
+                }
+              }
+              
+              // Гарантируем продолжение воспроизведения
+              if (a.paused) {
+                const playAttempt = a.play();
+                if (playAttempt && playAttempt.catch) {
+                  playAttempt.catch(e => {
+                    console.warn('Play after foreground failed', e);
+                    // Для iOS - дополнительные попытки
+                    if (isIOS()) {
+                      setTimeout(() => {
+                        if (a.paused) {
+                          a.play().catch(console.warn);
+                          // Метод "тихого" воспроизведения для iOS
+                          initSilentAudioPlayback();
+                        }
+                      }, 500);
+                    }
+                  });
+                }
+              }
+            }
+          }
+    
+          // Синхронизируем UI
           syncUiFromPlayback();
-
-          // Возобновляем автопрокрутку галереи
+    
+          // Восстанавливаем UI-анимации
+          if (window.__savedAnimationState) {
+            applyAnimationState(window.__savedAnimationState);
+            window.__savedAnimationState = null;
+          }
+          if (window.__savedBitState) {
+            initAudioContext();
+            startLogoPulsation();
+            window.__savedBitState = null;
+          }
+    
+          // Возобновляем галерею
           if (!coverAutoplay && Array.isArray(coverGalleryArr) && coverGalleryArr.length > 1) {
             startCoverAutoPlay();
           }
-          // Возвращаем анимацию, если была активна
-          if (window.__resumeAnimationOnFocus) {
-            applyAnimationState(true);
-            window.__resumeAnimationOnFocus = false;
+    
+          console.log('App returning to foreground, resuming playback');
+        }
+  
+        // Обновляем состояние Media Session при любом изменении видимости
+        if (a && playingTracks && playingTrack >= 0) {
+          try {
+            setupMediaSessionForPlayback();
+          } catch (e) {
+            console.warn('Failed to update Media Session', e);
           }
-          // Если «бит» включён — пересоздадим граф по требованию
-          if (bitEnabled) { initAudioContext(); startLogoPulsation(); }
         }
       });
 
@@ -3114,12 +3233,21 @@ generateIndex();
       audioEl.id = 'audio';
       audioEl.preload = 'metadata';
       audioEl.playsInline = true;
-      audioEl.autoplay = true; // помогает iOS воспринимать автопродолжение как непрерывное воспроизведение
+      // Критически важные атрибуты для iOS PWA
+      audioEl.setAttribute('playsinline', '');
+      audioEl.setAttribute('webkit-playsinline', '');
+      audioEl.setAttribute('x-webkit-airplay', 'allow');
+      audioEl.autoplay = true;
       audioEl.setAttribute('autoplay', '');
       audioEl.defaultMuted = false;
       audioEl.crossOrigin = 'anonymous';
       audioEl.setAttribute('aria-hidden', 'true');
       audioEl.tabIndex = -1;
+  
+      // Инициализация Web Audio API для фонового режима iOS
+      if (isIOS()) {
+        initAudioContextForBackground();
+      }
     }
     if (slot && audioEl && audioEl.parentNode !== slot) {
       slot.appendChild(audioEl);
@@ -3738,32 +3866,185 @@ generateIndex();
     if (!('mediaSession' in navigator) || !playingTracks) return;
     const tr = playingTracks[playingTrack];
     if (!tr) return;
-
-    // Подбираем корректную обложку: для «Избранного» — обложка альбома трека
+  
+    // Подбираем корректную обложку
     let artUrl = playingCover || 'img/logo.png';
     if (playingAlbumKey === SPECIAL_FAVORITES_KEY && Array.isArray(favoritesRefsModel)) {
       const ref = favoritesRefsModel[playingTrack];
       if (ref && ref.__cover) artUrl = ref.__cover;
     }
+  
+    // Создаем несколько размеров обложки для разных платформ
     const artSet = [
+      { src: artUrl, sizes: '96x96', type: 'image/png' },
       { src: artUrl, sizes: '128x128', type: 'image/png' },
+      { src: artUrl, sizes: '192x192', type: 'image/png' },
       { src: artUrl, sizes: '256x256', type: 'image/png' },
+      { src: artUrl, sizes: '384x384', type: 'image/png' },
       { src: artUrl, sizes: '512x512', type: 'image/png' }
     ];
-
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: tr.title,
-      artist: playingArtist || 'Витрина Разбита',
-      album: playingAlbumName || 'Альбом',
-      artwork: artSet
+  
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: tr.title,
+        artist: playingArtist || 'Витрина Разбита',
+        album: playingAlbumName || 'Альбом',
+        artwork: artSet
+      });
+    } catch (e) {
+      console.warn('Failed to set MediaMetadata', e);
+      // Fallback для старых браузеров
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: tr.title,
+          artist: playingArtist || 'Витрина Разбита',
+          album: playingAlbumName || 'Альбом',
+          artwork: [{ src: artUrl, sizes: '512x512' }]
+        });
+      } catch (e2) {
+        console.warn('Fallback MediaMetadata also failed', e2);
+      }
+    }
+  
+    // Устанавливаем обработчики действий
+    const setupAction = (action, handler) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch (e) {
+        console.warn(`Failed to set ${action} handler`, e);
+      }
+    };
+  
+    const audio = document.getElementById('audio');
+    if (!audio) return;
+  
+    setupAction('play', () => {
+      audio.play().catch(e => console.warn('MediaSession play failed', e));
+      updatePlayPauseIcon();
     });
-    navigator.mediaSession.setActionHandler('play',  ()=>{ const a=document.getElementById('audio'); a&&a.play(); updatePlayPauseIcon(); });
-    navigator.mediaSession.setActionHandler('pause', ()=>{ const a=document.getElementById('audio'); a&&a.pause(); updatePlayPauseIcon(); });
-    navigator.mediaSession.setActionHandler('previoustrack', previousTrack);
-    navigator.mediaSession.setActionHandler('nexttrack', nextTrack);
-    navigator.mediaSession.setActionHandler('seekbackward', ()=>{ const a=document.getElementById('audio'); if (a) a.currentTime=Math.max(0,(a.currentTime||0)-10); });
-    navigator.mediaSession.setActionHandler('seekforward', ()=>{ const a=document.getElementById('audio'); if (a) a.currentTime=Math.min(a.duration,(a.currentTime||0)+10); });
-    navigator.mediaSession.setActionHandler('seekto', (details)=>{ const a=document.getElementById('audio'); if (a && typeof details.seekTime==='number') a.currentTime = details.seekTime; });
+  
+    setupAction('pause', () => {
+      audio.pause();
+      updatePlayPauseIcon();
+    });
+  
+    setupAction('previoustrack', () => {
+      previousTrack();
+      // Обновляем метаданные после смены трека
+      setTimeout(() => setupMediaSessionForPlayback(), 100);
+    });
+  
+    setupAction('nexttrack', () => {
+      nextTrack();
+      // Обновляем метаданные после смены трека
+      setTimeout(() => setupMediaSessionForPlayback(), 100);
+    });
+  
+    setupAction('seekbackward', (details) => {
+      const skipTime = details.seekOffset || 10;
+      audio.currentTime = Math.max(0, audio.currentTime - skipTime);
+      updateMediaSessionPosition();
+    });
+  
+    setupAction('seekforward', (details) => {
+      const skipTime = details.seekOffset || 10;
+      audio.currentTime = Math.min(audio.duration, audio.currentTime + skipTime);
+      updateMediaSessionPosition();
+    });
+  
+    setupAction('seekto', (details) => {
+      if (typeof details.seekTime === 'number') {
+        audio.currentTime = details.seekTime;
+        updateMediaSessionPosition();
+      }
+    });
+  
+    // Android: добавляем обработчик для кнопки "стоп"
+    setupAction('stop', () => {
+      audio.pause();
+      audio.currentTime = 0;
+      updatePlayPauseIcon();
+      updateMediaSessionPosition();
+    });
+  
+    // Обновляем позицию воспроизведения
+    updateMediaSessionPosition();
+  }
+
+  // Новая функция для обновления позиции в Media Session
+  function updateMediaSessionPosition() {
+    if (!('mediaSession' in navigator)) return;
+  
+    const audio = document.getElementById('audio');
+    if (!audio) return;
+  
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: audio.duration || 0,
+        playbackRate: audio.playbackRate || 1,
+        position: audio.currentTime || 0
+      });
+    } catch (e) {
+      console.warn('Failed to update position state', e);
+    }
+  }
+
+  // Добавляем периодическое обновление позиции для Android
+  let __positionUpdateInterval = null;
+  function startPositionUpdates() {
+    if (__positionUpdateInterval) return;
+  
+    __positionUpdateInterval = setInterval(() => {
+      if (!document.hidden) {
+        updateMediaSessionPosition();
+      }
+    }, 1000);
+  }
+
+  function stopPositionUpdates() {
+    if (__positionUpdateInterval) {
+      clearInterval(__positionUpdateInterval);
+      __positionUpdateInterval = null;
+    }
+  }
+
+  // Запускаем обновления при воспроизведении
+  document.getElementById('audio')?.addEventListener('play', startPositionUpdates);
+  document.getElementById('audio')?.addEventListener('pause', stopPositionUpdates);
+  function initSilentAudioPlayback() {
+    if (!isIOS()) return;
+  
+    try {
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+    
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      gainNode.gain.value = 0.00001; // почти бесшумный
+    
+      oscillator.start(0);
+    
+      // Сохраняем для очистки
+      window.__silentOscillator = oscillator;
+      window.__silentAudioContext = audioContext;
+    
+      // Очищаем через 2 секунды
+      setTimeout(() => {
+        try {
+          oscillator.stop();
+          audioContext.close().catch(console.warn);
+          delete window.__silentOscillator;
+          delete window.__silentAudioContext;
+        } catch (e) {
+          console.warn('Failed to clean silent audio', e);
+        }
+      }, 2000);
+    
+      console.log('Silent audio playback initialized for iOS background mode');
+    } catch (e) {
+      console.warn('Failed to initialize silent audio playback', e);
+    }
   }
   function computeNextIndexPlayback() {
     const len = playingTracks ? playingTracks.length : 0;
@@ -6701,6 +6982,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19193589314
-Time: 2025-11-08 13:19:44 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19193934680
+Time: 2025-11-08 13:52:41 UTC
 
