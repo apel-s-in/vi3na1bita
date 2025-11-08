@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-123615a85183c3851eb3c717354e6a52aa79ecc8.idx
-│   │       ├── pack-123615a85183c3851eb3c717354e6a52aa79ecc8.pack
-│   │       └── pack-123615a85183c3851eb3c717354e6a52aa79ecc8.rev
+│   │       ├── pack-92bc85d36eb31de36db97ff939c50cb5bf356b25.idx
+│   │       ├── pack-92bc85d36eb31de36db97ff939c50cb5bf356b25.pack
+│   │       └── pack-92bc85d36eb31de36db97ff939c50cb5bf356b25.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 17:25:41 UTC
+Сгенерировано: 2025-11-08 17:27:24 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -4338,6 +4338,16 @@ generateIndex();
               const cnt = raw ? parseInt(raw, 10) || 0 : 0;
               localStorage.setItem(key, String(cnt + 1));
               console.warn('[auto-next] iOS PWA fallback did not start playback. UA:', navigator.userAgent);
+              // RUM: отправим метрику (если задан endpoint), иначе лог
+              try {
+                const payload = { type: 'autonext_fail', album: playingAlbumKey, track: playingTrack, ua: navigator.userAgent, ts: Date.now(), url: location.href };
+                const ep = window.__rumEndpoint || '';
+                if (ep && navigator.sendBeacon) {
+                  navigator.sendBeacon(ep, JSON.stringify(payload));
+                } else {
+                  (window.console && console.log) && console.log('[RUM]', payload);
+                }
+              } catch {}
             }
           } catch {}
         }, 2500);
@@ -5705,10 +5715,52 @@ ${lines}
       document.getElementById('main-block').classList.remove('hidden');
       initializeMainUi();
     }
-    // Подсказка про Memory Saver, если вкладка была выгружена
+    // Подсказка про Memory Saver + кнопка-инструкция
+    const showMemorySaverHelpModal = () => {
+      let modal = document.getElementById('memory-saver-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'memory-saver-modal';
+        modal.className = 'modal-bg active';
+        modal.innerHTML = `
+          <div class="modal-feedback" style="max-width:480px;">
+            <button class="bigclose" onclick="this.closest('.modal-bg').remove()" title="Закрыть">
+              <svg viewBox="0 0 48 48"><line x1="12" y1="12" x2="36" y2="36" stroke="currentColor" stroke-width="6" stroke-linecap="round"/><line x1="36" y1="12" x2="12" y2="36" stroke="currentColor" stroke-width="6" stroke-linecap="round"/></svg>
+            </button>
+            <div style="font-size:1.1em; font-weight:800; margin-bottom:8px;">Chrome: как не останавливать музыку</div>
+            <div style="color:#cfe3ff; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:8px; padding:12px; line-height:1.4;">
+              Если в Chrome включён «Экономия памяти», неактивные вкладки выгружаются и музыка может остановиться.<br><br>
+              Чтобы добавить сайт в исключения:<br>
+              1) Откройте настройки Chrome → Производительность.<br>
+              2) В разделе «Экономия памяти» найдите «Сохранять сайты активными».<br>
+              3) Нажмите «Добавить» и укажите: <b>${location.origin}</b><br><br>
+              Быстрая ссылка: chrome://settings/performance
+            </div>
+            <div style="display:flex; gap:10px; justify-content:center; margin-top:12px;">
+              <button class="offline-btn online" onclick="navigator.clipboard && navigator.clipboard.writeText('chrome://settings/performance').then(()=>{},()=>{}); this.textContent='Ссылка скопирована'">Скопировать ссылку</button>
+              <button class="offline-btn" onclick="this.closest('.modal-bg').remove()">Понятно</button>
+            </div>
+          </div>`;
+        document.body.appendChild(modal);
+      } else {
+        modal.classList.add('active');
+      }
+    };
     try {
+      const isChrome = /Chrome\/\d+/.test(navigator.userAgent) && !/Edg\//.test(navigator.userAgent) && !/OPR\//.test(navigator.userAgent);
+      const ctr = document.querySelector('.bottom-controls-center');
+      if (isChrome && ctr && !document.getElementById('memory-saver-help-btn')) {
+        const btn = document.createElement('button');
+        btn.id = 'memory-saver-help-btn';
+        btn.className = 'offline-btn';
+        btn.style.width = '98%';
+        btn.style.background = '#273050';
+        btn.textContent = 'Как не останавливать музыку в Chrome';
+        btn.onclick = showMemorySaverHelpModal;
+        ctr.appendChild(btn);
+      }
       if (document.wasDiscarded) {
-        NotificationSystem.warning('Похоже, вкладка была выгружена (Memory Saver). Добавьте сайт в исключения, чтобы музыка не останавливалась.');
+        showMemorySaverHelpModal();
       }
     } catch {}
     // Периодическая проверка таймера сна
@@ -7183,6 +7235,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19196104714
-Time: 2025-11-08 17:14:39 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19196239652
+Time: 2025-11-08 17:26:06 UTC
 
