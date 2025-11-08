@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-92bc85d36eb31de36db97ff939c50cb5bf356b25.idx
-│   │       ├── pack-92bc85d36eb31de36db97ff939c50cb5bf356b25.pack
-│   │       └── pack-92bc85d36eb31de36db97ff939c50cb5bf356b25.rev
+│   │       ├── pack-3731fb3e70e44a6e006c40a0a139e602750b8221.idx
+│   │       ├── pack-3731fb3e70e44a6e006c40a0a139e602750b8221.pack
+│   │       └── pack-3731fb3e70e44a6e006c40a0a139e602750b8221.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 17:27:24 UTC
+Сгенерировано: 2025-11-08 17:51:14 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1072,6 +1072,47 @@ generateIndex();
     #lyrics-text-modal.active { display: flex; }
     #lyrics-text-modal { align-items: center; justify-content: center; }
   </style>
+  <script src="./performance/rum.js" defer></script>
+  <script>
+    // RUM init (при наличии rumEndpoint) + передача состояния сети в Service Worker
+    (function(){
+      async function initRumIfConfigured() {
+        try {
+          const r = await fetch('./custom.json', { cache: 'no-store' });
+          if (!r.ok) return;
+          const cfg = await r.json().catch(()=>null);
+          const ep = (cfg && (cfg.rumEndpoint || (cfg.rum && cfg.rum.endpoint))) || '';
+          if (typeof initRUM === 'function' && ep) {
+            window.__rumEndpoint = ep;
+            initRUM({ endpoint: ep, sampleRate: 1.0 });
+          }
+        } catch {}
+      }
+      function sendNetStateToSW() {
+        try {
+          const c = navigator.connection || navigator.webkitConnection || navigator.mozConnection || {};
+          const state = {
+            saveData: !!c.saveData,
+            downlink: typeof c.downlink === 'number' ? c.downlink : null,
+            effectiveType: c.effectiveType || null
+          };
+          const post = () => navigator.serviceWorker.controller && navigator.serviceWorker.controller.postMessage({ type: 'NET_STATE', state });
+          if (navigator.serviceWorker && navigator.serviceWorker.controller) post();
+          else if (navigator.serviceWorker && navigator.serviceWorker.ready) navigator.serviceWorker.ready.then(()=>post()).catch(()=>{});
+        } catch {}
+      }
+      window.addEventListener('load', () => {
+        initRumIfConfigured();
+        sendNetStateToSW();
+        try {
+          const c = navigator.connection;
+          if (c && c.addEventListener) c.addEventListener('change', sendNetStateToSW);
+        } catch {}
+        window.addEventListener('online', sendNetStateToSW);
+        window.addEventListener('offline', sendNetStateToSW);
+      });
+    })();
+  </script>
 </head>
 <body>
   <!-- Промокод -->
@@ -4497,11 +4538,12 @@ generateIndex();
     }, 200);
   }
   function attachPlaybackStateListeners() {
+    // Обработчики onplay/onpause назначаются в attachAudioEventListeners(),
+    // чтобы не перетрёпывать setPlaybackLocks()/startPositionUpdates().
+    // Здесь лишь синхронизируем текущее состояние в Media Session один раз.
     const a = document.getElementById('audio');
     if (!a || !('mediaSession' in navigator)) return;
-    // Перенесено в attachAudioEventListeners (через onplay/onpause), чтобы не множить слушатели
-    a.onplay  = () => { try { navigator.mediaSession.playbackState = 'playing'; } catch {} };
-    a.onpause = () => { try { navigator.mediaSession.playbackState = 'paused';  } catch {} };
+    try { navigator.mediaSession.playbackState = a.paused ? 'paused' : 'playing'; } catch {}
   }
   function toggleLikePlaying() {
     if (!playingTracks || playingTrack < 0) return;
@@ -7235,6 +7277,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19196239652
-Time: 2025-11-08 17:26:06 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19196276914
+Time: 2025-11-08 17:29:28 UTC
 
