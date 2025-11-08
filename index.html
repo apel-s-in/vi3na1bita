@@ -421,18 +421,32 @@
   </style>
   <script src="./performance/rum.js" defer></script>
   <script>
-    // RUM init (при наличии rumEndpoint) + передача состояния сети в Service Worker
+    // RUM init (при наличии rumEndpoint) + передача состояния сети и конфига в Service Worker
     (function(){
+      async function postConfigToSW(cfg) {
+        try {
+          const msg = { type: 'CONFIG_UPDATE', config: { sw: (cfg && cfg.sw) ? cfg.sw : {} } };
+          const doPost = () => {
+            const t = navigator.serviceWorker?.controller || null;
+            if (t) t.postMessage(msg);
+            else navigator.serviceWorker?.ready?.then(reg => reg.active && reg.active.postMessage(msg)).catch(()=>{});
+          };
+          doPost();
+        } catch {}
+      }
       async function initRumIfConfigured() {
         try {
           const r = await fetch('./custom.json', { cache: 'no-store' });
           if (!r.ok) return;
           const cfg = await r.json().catch(()=>null);
+          // RUM
           const ep = (cfg && (cfg.rumEndpoint || (cfg.rum && cfg.rum.endpoint))) || '';
           if (typeof initRUM === 'function' && ep) {
             window.__rumEndpoint = ep;
             initRUM({ endpoint: ep, sampleRate: 1.0 });
           }
+          // Отправим sw-конфиг
+          await postConfigToSW(cfg);
         } catch {}
       }
       function sendNetStateToSW() {
