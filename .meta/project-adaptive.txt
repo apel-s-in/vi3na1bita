@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-6d1929b2f4e39dbb4b8d52d614a53ee8a4311dfa.idx
-│   │       ├── pack-6d1929b2f4e39dbb4b8d52d614a53ee8a4311dfa.pack
-│   │       └── pack-6d1929b2f4e39dbb4b8d52d614a53ee8a4311dfa.rev
+│   │       ├── pack-f433b7a6abaddbabae9194f4d22bbaa9ad46ab52.idx
+│   │       ├── pack-f433b7a6abaddbabae9194f4d22bbaa9ad46ab52.pack
+│   │       └── pack-f433b7a6abaddbabae9194f4d22bbaa9ad46ab52.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 18:18:31 UTC
+Сгенерировано: 2025-11-08 18:18:49 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -491,6 +491,14 @@ jobs:
 //=================================================
 // FILE: /custom.json
 {
+  "rumEndpoint": "",
+  "sw": {
+    "mediaMaxCacheMB": 150,
+    "nonRangeMaxStoreMB": 25,
+    "nonRangeMaxStoreMBSlow": 10,
+    "allowUnknownSize": false,
+    "revalidateDays": 7
+  },
   "items": [
     {
       "type": "ym",
