@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-3d40832f8eaae5ea106ee689067c96ae1fcb09fb.idx
-│   │       ├── pack-3d40832f8eaae5ea106ee689067c96ae1fcb09fb.pack
-│   │       └── pack-3d40832f8eaae5ea106ee689067c96ae1fcb09fb.rev
+│   │       ├── pack-0ef67a7205f396d41f697bf4541f689cfdcc8320.idx
+│   │       ├── pack-0ef67a7205f396d41f697bf4541f689cfdcc8320.pack
+│   │       └── pack-0ef67a7205f396d41f697bf4541f689cfdcc8320.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 08:24:02 UTC
+Сгенерировано: 2025-11-08 08:25:53 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -5049,7 +5049,7 @@ ${lines}
    Офлайн-пакеты: через сообщения OFFLINE_CACHE_ADD / OFFLINE_CACHE_CLEAR_CURRENT с прогрессом.
 */
 
-const SW_VERSION = '8.0.2';
+const SW_VERSION = '8.0.3';
 const CORE_CACHE = `core-${SW_VERSION}`;
 const RUNTIME_CACHE = `runtime-${SW_VERSION}`;
 const MEDIA_CACHE = `media-${SW_VERSION}`;
@@ -5088,6 +5088,7 @@ self.addEventListener('activate', (event) => {
     const allow = new Set([CORE_CACHE, RUNTIME_CACHE, MEDIA_CACHE, OFFLINE_CACHE, META_CACHE]);
     await Promise.all(keys.map(k => allow.has(k) ? Promise.resolve() : caches.delete(k)));
     await self.clients.claim();
+    try { await postToAllClients({ type: 'SW_VERSION', version: SW_VERSION }); } catch {}
   })());
 });
 
@@ -5297,6 +5298,12 @@ self.addEventListener('message', (event) => {
       const list = await readOfflineList();
       postToAllClients({ type: 'OFFLINE_STATE', value: list.length > 0 });
     })());
+  }
+  if (data.type === 'SKIP_WAITING') {
+    event.waitUntil(self.skipWaiting());
+  }
+  if (data.type === 'GET_SW_VERSION') {
+    event.waitUntil(postToAllClients({ type: 'SW_VERSION', version: SW_VERSION }));
   }
 });
 
@@ -6211,6 +6218,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19190380650
-Time: 2025-11-08 08:13:40 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19190498566
+Time: 2025-11-08 08:24:33 UTC
 
