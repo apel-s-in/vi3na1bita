@@ -81,17 +81,84 @@ function isStaticAsset(request) {
   return d === 'script' || d === 'style' || d === 'font' || d === 'worker';
 }
 
+/** Разбор заголовка Range: bytes=start-end */
+function parseRangeHeader(range, totalLength) {
+  const m = /^bytes=(\d*)-(\d*)$/.exec(String(range || ''));
+  if (!m) return null;
+  let start = m[1] === '' ? 0 : parseInt(m[1], 10);
+  let end = m[2] === '' ? (totalLength - 1) : parseInt(m[2], 10);
+  if (Number.isNaN(start)) start = 0;
+  if (Number.isNaN(end)) end = totalLength - 1;
+  start = Math.max(0, start);
+  end = Math.min(totalLength - 1, end);
+  if (end < start) return null;
+  return { start, end };
+}
+
+/** 206 Partial Content из кэша (MEDIA/ОFFLINE), либо сетью как fallback */
+async function serveRangeFromCacheOrNetwork(request) {
+  const url = request.url;
+  const rangeHeader = request.headers.get('range');
+  // Пытаемся найти полный ответ в кэшах
+  const mediaCache = await caches.open(MEDIA_CACHE);
+  const offlineCache = await caches.open(OFFLINE_CACHE);
+  let res = await mediaCache.match(url) || await offlineCache.match(url);
+
+  // Если нет в кэше — идём в сеть (и кладём в MEDIA_CACHE)
+  if (!res) {
+    try {
+      const net = await fetch(request);
+      if (net && (net.ok || net.status === 206)) {
+        try { await mediaCache.put(url, net.clone()); } catch {}
+        return net;
+      }
+      return net;
+    } catch {
+      return new Response('', { status: 404 });
+    }
+  }
+
+  // Если ответ «opaque» (no-cors) — тело недоступно, отдаём как есть (пусть браузер сам справится)
+  if (res.type === 'opaque') {
+    return res;
+  }
+
+  // Готовим 206 из полного тела
+  const buf = await res.arrayBuffer();
+  const total = buf.byteLength;
+  const range = parseRangeHeader(rangeHeader, total);
+  if (!range) {
+    // Если Range некорректный — отдадим 416
+    return new Response('', {
+      status: 416,
+      headers: {
+        'Content-Range': `bytes */${total}`
+      }
+    });
+  }
+  const { start, end } = range;
+  const chunk = buf.slice(start, end + 1);
+  const contentType = res.headers.get('content-type') || 'audio/mpeg';
+  const headers = new Headers(res.headers);
+  headers.set('Content-Type', contentType);
+  headers.set('Content-Length', String(chunk.byteLength));
+  headers.set('Accept-Ranges', 'bytes');
+  headers.set('Content-Range', `bytes ${start}-${end}/${total}`);
+
+  return new Response(chunk, { status: 206, headers });
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
   // Не вмешиваемся в другие методы кроме GET
   if (request.method !== 'GET') return;
 
-  // Особый случай: Range-запросы для аудио — не кэшируем, напрямую в сеть
-  if (isAudioRequest(request) && request.headers.has('range')) {
-    event.respondWith(fetch(request));
-    return;
-  }
+  // Особый случай: Range-запросы для аудио — пробуем 206 из кэша, иначе сеть
+    if (isAudioRequest(request) && request.headers.has('range')) {
+      event.respondWith(serveRangeFromCacheOrNetwork(request));
+      return;
+    }
 
   // Навигация: network-first с таймаутом
   if (isNavigationRequest(request)) {
