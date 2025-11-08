@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-29fef5b988f84d8958174b2f7a7d4c47ad87f2eb.idx
-│   │       ├── pack-29fef5b988f84d8958174b2f7a7d4c47ad87f2eb.pack
-│   │       └── pack-29fef5b988f84d8958174b2f7a7d4c47ad87f2eb.rev
+│   │       ├── pack-123615a85183c3851eb3c717354e6a52aa79ecc8.idx
+│   │       ├── pack-123615a85183c3851eb3c717354e6a52aa79ecc8.pack
+│   │       └── pack-123615a85183c3851eb3c717354e6a52aa79ecc8.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 17:11:53 UTC
+Сгенерировано: 2025-11-08 17:25:41 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -5968,41 +5968,36 @@ function parseRangeHeader(range, totalLength) {
 async function serveRangeFromCacheOrNetwork(request) {
   const url = request.url;
   const rangeHeader = request.headers.get('range');
-  
+
   // Для фоновых запросов увеличиваем таймаут
   const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).catch(() => []);
   const isBackground = request.headers.get('purpose') === 'prefetch' ||
                        (request.referrer && request.referrer.includes('background')) ||
                        clients.length === 0;
-  
-  // Пытаемся найти полный ответ в кэшах
+
+  // Пытаемся найти ПОЛНЫЙ (200) ответ в кэшах
   const mediaCache = await caches.open(MEDIA_CACHE);
   const offlineCache = await caches.open(OFFLINE_CACHE);
   let res = await mediaCache.match(url) || await offlineCache.match(url);
-  
-  // Если нет в кэше — идём в сеть
+
+  // 206 и opaque из кэша не подходят для последующей «резки» — игнорируем
+  if (res && (res.status === 206 || res.type === 'opaque')) {
+    res = null;
+  }
+
+  // Если нет подходящего в кэше — идём в сеть
   if (!res) {
     try {
-      // Увеличиваем таймаут для фоновых запросов
       const timeout = isBackground ? 30000 : 10000;
       const controller = new AbortController();
       const id = setTimeout(() => controller.abort(), timeout);
-      
-      const net = await fetch(request, { 
-        signal: controller.signal,
-        keepalive: true // критично для фоновых запросов
-      });
-      
+
+      const net = await fetch(request, { signal: controller.signal, keepalive: true });
       clearTimeout(id);
-      
-      if (net && (net.ok || net.status === 206)) {
-        // Кэшируем только в том случае, если запрос успешный
-        try { 
-          await mediaCache.put(url, net.clone()); 
-        } catch (e) {
-          console.warn('Failed to cache media', e);
-        }
-        return net;
+
+      // КЭШИРУЕМ ТОЛЬКО ПОЛНЫЕ 200-ответы (не 206 и не opaque)
+      if (net && net.ok && net.status === 200 && net.type !== 'opaque') {
+        try { await mediaCache.put(url, net.clone()); } catch (e) { console.warn('Failed to cache media (200 full)', e); }
       }
       return net;
     } catch (e) {
@@ -6010,40 +6005,28 @@ async function serveRangeFromCacheOrNetwork(request) {
       return new Response('', { status: 404 });
     }
   }
-  
-  // Если ответ «opaque» (no-cors) — тело недоступно, отдаём как есть
-  if (res.type === 'opaque') {
-    return res;
-  }
-  
-  // Готовим 206 Partial Content из полного тела
+
+  // Есть полный буфер — собираем 206 Partial Content
   const buf = await res.arrayBuffer();
   const total = buf.byteLength;
   const range = parseRangeHeader(rangeHeader, total);
-  
+
   if (!range) {
-    // Если Range некорректный — отдадим 416
-    return new Response('', {
-      status: 416,
-      headers: {
-        'Content-Range': `bytes */${total}`
-      }
-    });
+    return new Response('', { status: 416, headers: { 'Content-Range': `bytes */${total}` } });
   }
-  
+
   const { start, end } = range;
   const chunk = buf.slice(start, end + 1);
   const contentType = res.headers.get('content-type') || 'audio/mpeg';
-  const headers = new Headers(res.headers);
-  
+
+  const headers = new Headers();
   headers.set('Content-Type', contentType);
   headers.set('Content-Length', String(chunk.byteLength));
   headers.set('Accept-Ranges', 'bytes');
   headers.set('Content-Range', `bytes ${start}-${end}/${total}`);
-  // Добавляем заголовки для фоновых запросов
   headers.set('Cache-Control', 'public, max-age=31536000');
   headers.set('Keep-Alive', 'timeout=60, max=100');
-  
+
   return new Response(chunk, { status: 206, headers });
 }
 
@@ -6144,20 +6127,29 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Аудио: stale-while-revalidate (без поддержки Range здесь)
+  // Аудио: stale-while-revalidate (кэшируем ТОЛЬКО 200 full)
   if (isAudioRequest(request)) {
     event.respondWith((async () => {
       const cache = await caches.open(MEDIA_CACHE);
       const cached = await cache.match(request);
-      const revalidate = (async () => {
+
+      // Фоновая перевалидация
+      (async () => {
         try {
           const netRes = await fetch(request);
-          if (netRes && (netRes.ok || netRes.type === 'opaque')) {
+          // Кладем в кэш только 200 и не-opaque (не 206 и не no-cors)
+          if (netRes && netRes.ok && netRes.status === 200 && netRes.type !== 'opaque' && !request.headers.has('range')) {
             cache.put(request, netRes.clone()).catch(() => {});
           }
         } catch {}
       })();
-      return cached || (await fetch(request).catch(() => new Response('', { status: 404 })));
+
+      // Отдаем кэш если есть, иначе сеть
+      try {
+        return cached || (await fetch(request));
+      } catch {
+        return new Response('', { status: 404 });
+      }
     })());
     return;
   }
@@ -6284,14 +6276,25 @@ async function offlineAddResources(resources) {
 
   for (const url of toCache) {
     try {
-      // Пытаемся с CORS, иначе — no-cors (opaque)
+      const isAudio = /\.(mp3|m4a|aac|flac|ogg|wav)(\?|#|$)/i.test(url);
+
       let res = await fetch(url, { cache: 'no-cache', keepalive: true }).catch(() => null);
-      if (!res || !(res.ok || res.type === 'opaque')) {
-        res = await fetch(url, { mode: 'no-cors' }).catch(() => null);
+
+      if (isAudio) {
+        // Для аудио: кэшируем только CORS 200 (не opaque), чтобы потом собирать 206 из полного буфера
+        if (res && res.ok && res.type !== 'opaque') {
+          await cache.put(url, res.clone());
+        }
+      } else {
+        // Для не-аудио: допускаем opaque как fallback (изображения, html, json и пр.)
+        if (!res || !(res.ok || res.type === 'opaque')) {
+          res = await fetch(url, { mode: 'no-cors' }).catch(() => null);
+        }
+        if (res) {
+          await cache.put(url, res.clone());
+        }
       }
-      if (res) {
-        await cache.put(url, res.clone());
-      }
+
       done++;
       await postToAllClients({ type: 'OFFLINE_PROGRESS', percent: Math.round(done / total * 100) });
     } catch {
