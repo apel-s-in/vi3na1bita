@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-351b6a71ae8f1c2a95ec52e3ec7690d80677655f.idx
-│   │       ├── pack-351b6a71ae8f1c2a95ec52e3ec7690d80677655f.pack
-│   │       └── pack-351b6a71ae8f1c2a95ec52e3ec7690d80677655f.rev
+│   │       ├── pack-6d1929b2f4e39dbb4b8d52d614a53ee8a4311dfa.idx
+│   │       ├── pack-6d1929b2f4e39dbb4b8d52d614a53ee8a4311dfa.pack
+│   │       └── pack-6d1929b2f4e39dbb4b8d52d614a53ee8a4311dfa.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 17:53:45 UTC
+Сгенерировано: 2025-11-08 18:18:31 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -1074,18 +1074,32 @@ generateIndex();
   </style>
   <script src="./performance/rum.js" defer></script>
   <script>
-    // RUM init (при наличии rumEndpoint) + передача состояния сети в Service Worker
+    // RUM init (при наличии rumEndpoint) + передача состояния сети и конфига в Service Worker
     (function(){
+      async function postConfigToSW(cfg) {
+        try {
+          const msg = { type: 'CONFIG_UPDATE', config: { sw: (cfg && cfg.sw) ? cfg.sw : {} } };
+          const doPost = () => {
+            const t = navigator.serviceWorker?.controller || null;
+            if (t) t.postMessage(msg);
+            else navigator.serviceWorker?.ready?.then(reg => reg.active && reg.active.postMessage(msg)).catch(()=>{});
+          };
+          doPost();
+        } catch {}
+      }
       async function initRumIfConfigured() {
         try {
           const r = await fetch('./custom.json', { cache: 'no-store' });
           if (!r.ok) return;
           const cfg = await r.json().catch(()=>null);
+          // RUM
           const ep = (cfg && (cfg.rumEndpoint || (cfg.rum && cfg.rum.endpoint))) || '';
           if (typeof initRUM === 'function' && ep) {
             window.__rumEndpoint = ep;
             initRUM({ endpoint: ep, sampleRate: 1.0 });
           }
+          // Отправим sw-конфиг
+          await postConfigToSW(cfg);
         } catch {}
       }
       function sendNetStateToSW() {
