@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-eb7236f818387e0d991eb8e9e656dcd35deabc16.idx
-│   │       ├── pack-eb7236f818387e0d991eb8e9e656dcd35deabc16.pack
-│   │       └── pack-eb7236f818387e0d991eb8e9e656dcd35deabc16.rev
+│   │       ├── pack-dff3e8e95b2742003bb690e1ebe312ead58b8be1.idx
+│   │       ├── pack-dff3e8e95b2742003bb690e1ebe312ead58b8be1.pack
+│   │       └── pack-dff3e8e95b2742003bb690e1ebe312ead58b8be1.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 16:36:49 UTC
+Сгенерировано: 2025-11-08 16:44:29 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -2290,7 +2290,94 @@ generateIndex();
     applyMiniModeUI();
   }
   function clearRelizView(){ const cont = document.getElementById('reliz-container'); if (cont) cont.remove(); }
-
+  function setupBackgroundEventHandlers() {
+    // Обработчик для iOS: событие окончания воспроизведения в фоне
+    document.addEventListener('webkitendfullscreen', () => {
+      console.log('iOS webkitendfullscreen event');
+      // Принудительно обновляем состояние
+      const audio = document.getElementById('audio');
+      if (audio && !audio.paused && document.hidden) {
+        syncUiFromPlayback();
+        setupMediaSessionForPlayback();
+      }
+    });
+  
+    // Обработчик для Android: Doze mode
+    document.addEventListener('freeze', () => {
+      console.log('App entering freeze state (Android Doze)');
+      // Сохраняем состояние перед заморозкой
+      const audio = document.getElementById('audio');
+     if (audio) {
+        __savedResumePosition = audio.currentTime;
+        localStorage.setItem('freezePosition', String(__savedResumePosition));
+      }
+    });
+  
+    // Обработчик для Android: выход из Doze mode
+    document.addEventListener('resume', () => {
+      console.log('App resuming from freeze state');
+      // Восстанавливаем позицию
+      const savedPosition = localStorage.getItem('freezePosition');
+      if (savedPosition) {
+        const pos = parseFloat(savedPosition);
+        if (!isNaN(pos)) {
+          __savedResumePosition = pos;
+          syncUiFromPlayback();
+        }
+        localStorage.removeItem('freezePosition');
+      }
+    });
+  
+    // Обработчик для всех устройств: событие потери аудио фокуса
+    try {
+      if ('onfocusout' in document) {
+        document.addEventListener('focusout', () => {
+          if (document.hidden) {
+            console.log('App lost focus and is hidden');
+            // Сохраняем состояние
+            const audio = document.getElementById('audio');
+            if (audio) {
+              __savedResumePosition = audio.currentTime;
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to setup focusout handler', e);
+    }
+  
+    // Обработчик для iOS: предотвращение автоматической паузы при блокировке экрана
+    if (isIOS()) {
+      window.addEventListener('pagehide', (e) => {
+        if (e.persisted) {
+          console.log('iOS pagehide with persisted state - app moving to background');
+          // Принудительно сохраняем состояние
+          const audio = document.getElementById('audio');
+          if (audio) {
+            __savedResumePosition = audio.currentTime;
+            localStorage.setItem('iosBackgroundPosition', String(__savedResumePosition));
+          }
+        }
+      });
+    
+      window.addEventListener('pageshow', (e) => {
+        if (e.persisted) {
+          console.log('iOS pageshow with persisted state - app returning from background');
+          // Восстанавливаем позицию
+          const savedPosition = localStorage.getItem('iosBackgroundPosition');
+          if (savedPosition) {
+            const pos = parseFloat(savedPosition);
+            if (!isNaN(pos)) {
+              __savedResumePosition = pos;
+              syncUiFromPlayback();
+            }
+            localStorage.removeItem('iosBackgroundPosition');
+          }
+        }
+      });
+    }
+  }
+  // Вызываем функцию в initializeMainUi
   /* ====== Инициализация UI ====== */
   async function initializeMainUi() {
     (async () => {
@@ -7011,6 +7098,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19195683033
-Time: 2025-11-08 16:35:51 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19195699885
+Time: 2025-11-08 16:37:22 UTC
 
