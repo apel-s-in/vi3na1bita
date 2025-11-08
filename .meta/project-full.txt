@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-f433b7a6abaddbabae9194f4d22bbaa9ad46ab52.idx
-│   │       ├── pack-f433b7a6abaddbabae9194f4d22bbaa9ad46ab52.pack
-│   │       └── pack-f433b7a6abaddbabae9194f4d22bbaa9ad46ab52.rev
+│   │       ├── pack-0971899bc62fe41d54bb28f90a14a3b3439404f4.idx
+│   │       ├── pack-0971899bc62fe41d54bb28f90a14a3b3439404f4.pack
+│   │       └── pack-0971899bc62fe41d54bb28f90a14a3b3439404f4.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 18:18:49 UTC
+Сгенерировано: 2025-11-08 18:26:45 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -5996,9 +5996,17 @@ ${lines}
 const SW_VERSION = '8.0.3';
 const CORE_CACHE = `core-${SW_VERSION}`;
 const RUNTIME_CACHE = `runtime-${SW_VERSION}`;
-const MEDIA_CACHE = `media-${SW_VERSION}`;
+const MEDIA_CACHE = 'media'; // постоянное имя для сохранения кэша между версиями
 const OFFLINE_CACHE = `offline-${SW_VERSION}`;
 const META_CACHE = `meta-${SW_VERSION}`;
+// Конфиг по умолчанию (переопределяется через CONFIG_UPDATE из custom.json)
+const DEFAULT_SW_CONFIG = {
+  mediaMaxCacheMB: 150,
+  nonRangeMaxStoreMB: 25,
+  nonRangeMaxStoreMBSlow: 10,
+  allowUnknownSize: false,
+  revalidateDays: 7 // через столько дней делать HEAD‑перевалидацию
+};
 
 const CORE_ASSETS = [
   './',
@@ -6029,8 +6037,15 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    const allow = new Set([CORE_CACHE, RUNTIME_CACHE, MEDIA_CACHE, OFFLINE_CACHE, META_CACHE]);
-    await Promise.all(keys.map(k => allow.has(k) ? Promise.resolve() : caches.delete(k)));
+    await Promise.all(keys.map(async (k) => {
+      // Сохраняем постоянный MEDIA_CACHE и любые старые media-* (мягкая миграция),
+      // остальное — по белому списку.
+      if (
+        k === CORE_CACHE || k === RUNTIME_CACHE || k === MEDIA_CACHE ||
+        k === OFFLINE_CACHE || k === META_CACHE || k.startsWith('media-')
+      ) return;
+      await caches.delete(k);
+    }));
     await self.clients.claim();
     try { await postToAllClients({ type: 'SW_VERSION', version: SW_VERSION }); } catch {}
   })());
@@ -6091,46 +6106,34 @@ async function serveRangeFromCacheOrNetwork(request) {
                        (request.referrer && request.referrer.includes('background')) ||
                        clients.length === 0;
 
-  // Пытаемся найти ПОЛНЫЙ (200) ответ в кэшах
-  const mediaCache = await caches.open(MEDIA_CACHE);
-  const offlineCache = await caches.open(OFFLINE_CACHE);
-  let res = await mediaCache.match(url) || await offlineCache.match(url);
-
-  // 206 и opaque из кэша не подходят для последующей «резки» — игнорируем
+  // Пробуем любой кэш (вкл. старые media-*)
+  let res = await caches.match(url);
   if (res && (res.status === 206 || res.type === 'opaque')) {
-    res = null;
+    res = null; // нужен только 200-full
   }
 
-  // Если нет подходящего в кэше — идём в сеть
   if (!res) {
     try {
       const timeout = isBackground ? 30000 : 10000;
       const controller = new AbortController();
       const id = setTimeout(() => controller.abort(), timeout);
-
       const net = await fetch(request, { signal: controller.signal, keepalive: true });
       clearTimeout(id);
-
-      // КЭШИРУЕМ ТОЛЬКО ПОЛНЫЕ 200-ответы (не 206 и не opaque)
-      if (net && net.ok && net.status === 200 && net.type !== 'opaque') {
-        try { await mediaCache.put(url, net.clone()); } catch (e) { console.warn('Failed to cache media (200 full)', e); }
-      }
+      // 206 не кэшируем, 200 можно положить (через non-Range путь)
       return net;
-    } catch (e) {
-      console.warn('Network request failed for audio', url, e);
+    } catch {
       return new Response('', { status: 404 });
     }
   }
 
   // Есть полный буфер — собираем 206 Partial Content
+  await touchMediaItem(url).catch(()=>{});
   const buf = await res.arrayBuffer();
   const total = buf.byteLength;
   const range = parseRangeHeader(rangeHeader, total);
-
   if (!range) {
     return new Response('', { status: 416, headers: { 'Content-Range': `bytes */${total}` } });
   }
-
   const { start, end } = range;
   const chunk = buf.slice(start, end + 1);
   const contentType = res.headers.get('content-type') || 'audio/mpeg';
@@ -6141,8 +6144,6 @@ async function serveRangeFromCacheOrNetwork(request) {
   headers.set('Accept-Ranges', 'bytes');
   headers.set('Content-Range', `bytes ${start}-${end}/${total}`);
   headers.set('Cache-Control', 'public, max-age=31536000');
-  headers.set('Keep-Alive', 'timeout=60, max=100');
-
   return new Response(chunk, { status: 206, headers });
 }
 
@@ -6243,25 +6244,55 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Аудио: stale-while-revalidate (кэшируем ТОЛЬКО 200 full И ТОЛЬКО до лимита по размеру на текущей сети)
+  // Аудио: stale-while-revalidate (кэшируем ТОЛЬКО 200 full по лимитам; LRU; редкая HEAD‑ревалидация)
   if (isAudioRequest(request)) {
     event.respondWith((async () => {
-      const cache = await caches.open(MEDIA_CACHE);
-      const cached = await cache.match(request);
+      const url = request.url;
+      // Любой кэш (учтём возможные старые media-*)
+      const cached = await caches.match(url);
 
-      // Фоновая перевалидация non-Range
-      (async () => {
-        try {
-          const netRes = await fetch(request);
-          if (!request.headers.has('range') && await shouldCacheNonRangeAudio(netRes)) {
-            cache.put(request, netRes.clone()).catch(() => {});
-          }
-        } catch {}
-      })();
+      if (!request.headers.has('range')) {
+        // Фоновая ревалидация (HEAD) для кэшированного
+        if (cached) { maybeHeadRevalidate(url).catch(()=>{}); }
+        // Параллельно — попытка перевалидировать через GET и положить в persistent media
+        (async () => {
+          try {
+            const netRes = await fetch(request, { keepalive: true });
+            if (netRes && netRes.ok && netRes.status === 200 && await shouldCacheNonRangeAudio(netRes)) {
+              const cache = await caches.open(MEDIA_CACHE);
+              await cache.put(url, netRes.clone());
+              const size = bytesFromHeader(netRes) || 0;
+              await upsertMediaItem(url, {
+                size,
+                etag: netRes.headers.get('etag'),
+                lastModified: netRes.headers.get('last-modified')
+              });
+            }
+          } catch {}
+        })();
+      }
 
-      // Отдаем кэш если есть, иначе сеть
+      // Отдаём кэш, если есть
+      if (cached) {
+        touchMediaItem(url).catch(()=>{});
+        return cached;
+      }
+
+      // Иначе — сеть
       try {
-        return cached || (await fetch(request));
+        const netRes = await fetch(request);
+        // Положим только 200 full по лимитам
+        if (!request.headers.has('range') && netRes && netRes.ok && netRes.status === 200 && await shouldCacheNonRangeAudio(netRes)) {
+          const cache = await caches.open(MEDIA_CACHE);
+          await cache.put(url, netRes.clone());
+          const size = bytesFromHeader(netRes) || 0;
+          await upsertMediaItem(url, {
+            size,
+            etag: netRes.headers.get('etag'),
+            lastModified: netRes.headers.get('last-modified')
+          });
+        }
+        return netRes;
       } catch {
         return new Response('', { status: 404 });
       }
@@ -6332,7 +6363,42 @@ async function readLastRequestedOffline() {
   if (!res) return [];
   try { const j = await res.json(); return Array.isArray(j) ? j : []; } catch { return []; }
 }
-
+// ----- SW-config (из custom.json через CONFIG_UPDATE) -----
+async function writeSwConfig(cfg) {
+  const cache = await caches.open(META_CACHE);
+  await cache.put(new Request('meta:sw-config'), new Response(JSON.stringify(cfg || {}), {
+    headers: { 'content-type': 'application/json' }
+  }));
+}
+async function readSwConfig() {
+  try {
+    const cache = await caches.open(META_CACHE);
+    const res = await cache.match('meta:sw-config');
+    if (!res) return { ...DEFAULT_SW_CONFIG };
+    const j = await res.json().catch(()=>null);
+    const base = { ...DEFAULT_SW_CONFIG };
+    if (j && j.sw && typeof j.sw === 'object') {
+      const sw = j.sw;
+      base.mediaMaxCacheMB = Number.isFinite(sw.mediaMaxCacheMB) ? sw.mediaMaxCacheMB : base.mediaMaxCacheMB;
+      base.nonRangeMaxStoreMB = Number.isFinite(sw.nonRangeMaxStoreMB) ? sw.nonRangeMaxStoreMB : base.nonRangeMaxStoreMB;
+      base.nonRangeMaxStoreMBSlow = Number.isFinite(sw.nonRangeMaxStoreMBSlow) ? sw.nonRangeMaxStoreMBSlow : base.nonRangeMaxStoreMBSlow;
+      base.allowUnknownSize = typeof sw.allowUnknownSize === 'boolean' ? sw.allowUnknownSize : base.allowUnknownSize;
+      base.revalidateDays = Number.isFinite(sw.revalidateDays) ? sw.revalidateDays : base.revalidateDays;
+    }
+    return base;
+  } catch {
+    return { ...DEFAULT_SW_CONFIG };
+  }
+}
+// --- NET_STATE + лимиты для non-Range аудио ---
+async function writeNetState(state) {
+  try {
+    const cache = await caches.open(META_CACHE);
+    await cache.put(new Request('meta:net-state'), new Response(JSON.stringify(state || {}), {
+      headers: { 'content-type': 'application/json' }
+    }));
+  } catch {}
+}
 // --- NET_STATE + лимиты для non-Range аудио ---
 async function writeNetState(state) {
   try {
@@ -6362,12 +6428,120 @@ function bytesFromHeader(res) {
 async function shouldCacheNonRangeAudio(response) {
   if (!response || !response.ok || response.status !== 200 || response.type === 'opaque') return false;
   const ns = await readNetState();
+  const cfg = await readSwConfig();
   const slow = !!ns.saveData || (typeof ns.downlink === 'number' && ns.downlink > 0 && ns.downlink <= 1.3) || (ns.effectiveType && /(^|-)2g$/.test(ns.effectiveType));
-  const limitMB = slow ? 10 : 25; // лимиты: медленная сеть / обычная
+  const limitMB = slow ? cfg.nonRangeMaxStoreMBSlow : cfg.nonRangeMaxStoreMB;
   const limitB = limitMB * 1024 * 1024;
   const size = bytesFromHeader(response);
-  if (size == null) return false; // без Content-Length — не кэшируем
+  if (size == null) return !!cfg.allowUnknownSize;
   return size <= limitB;
+}
+
+// ----- media-map (LRU) -----
+async function readMediaMap() {
+  const cache = await caches.open(META_CACHE);
+  const res = await cache.match('meta:media-map');
+  if (!res) return { totalSize: 0, items: {} };
+  try { const j = await res.json(); return (j && typeof j === 'object') ? j : { totalSize: 0, items: {} }; }
+  catch { return { totalSize: 0, items: {} }; }
+}
+async function writeMediaMap(map) {
+  const cache = await caches.open(META_CACHE);
+  await cache.put('meta:media-map', new Response(JSON.stringify(map), { headers: { 'content-type': 'application/json' } }));
+}
+async function touchMediaItem(url) {
+  try {
+    const map = await readMediaMap();
+    if (map.items[url]) {
+      map.items[url].lastAccess = Date.now();
+      await writeMediaMap(map);
+    }
+  } catch {}
+}
+async function upsertMediaItem(url, meta) {
+  const map = await readMediaMap();
+  const prev = map.items[url];
+  const size = Number.isFinite(meta.size) ? meta.size : 0;
+  if (!prev) {
+    map.items[url] = {
+      size,
+      etag: meta.etag || null,
+      lastModified: meta.lastModified || null,
+      lastAccess: Date.now(),
+      revalidatedAt: meta.revalidatedAt || 0
+    };
+    map.totalSize += size;
+  } else {
+    const delta = size - (prev.size || 0);
+    map.totalSize += delta;
+    prev.size = size;
+    prev.etag = meta.etag || prev.etag || null;
+    prev.lastModified = meta.lastModified || prev.lastModified || null;
+    prev.lastAccess = Date.now();
+    if (meta.revalidatedAt) prev.revalidatedAt = meta.revalidatedAt;
+  }
+  await writeMediaMap(map);
+  await ensureMediaBudget(map);
+}
+async function ensureMediaBudget(mapMaybe) {
+  const map = mapMaybe || await readMediaMap();
+  const cfg = await readSwConfig();
+  const maxBytes = (cfg.mediaMaxCacheMB || 150) * 1024 * 1024;
+  if (map.totalSize <= maxBytes) return;
+  const mediaCache = await caches.open(MEDIA_CACHE);
+  const items = Object.entries(map.items);
+  // Сортируем по lastAccess (старые — первыми)
+  items.sort((a, b) => (a[1].lastAccess || 0) - (b[1].lastAccess || 0));
+  for (const [url, meta] of items) {
+    try { await mediaCache.delete(url); } catch {}
+    map.totalSize -= meta.size || 0;
+    delete map.items[url];
+    if (map.totalSize <= maxBytes) break;
+  }
+  await writeMediaMap(map);
+}
+async function maybeHeadRevalidate(url) {
+  try {
+    const cfg = await readSwConfig();
+    const map = await readMediaMap();
+    const meta = map.items[url];
+    if (!meta) return;
+    const days = Math.max(1, cfg.revalidateDays || 7);
+    const now = Date.now();
+    const due = !meta.revalidatedAt || (now - meta.revalidatedAt) > days * 24 * 60 * 60 * 1000;
+    if (!due) return;
+
+    const headReq = new Request(url, { method: 'HEAD', cache: 'no-cache' });
+    const head = await fetch(headReq).catch(()=>null);
+    if (!head || !(head.ok || head.status === 304)) {
+      // отметим попытку, чтобы не ддосить
+      meta.revalidatedAt = now;
+      await writeMediaMap(map);
+      return;
+    }
+    const etag = head.headers.get('etag');
+    const lm = head.headers.get('last-modified');
+    const changed = (etag && etag !== meta.etag) || (lm && lm !== meta.lastModified);
+    // Обновим отметку regardless
+    meta.revalidatedAt = now;
+    await writeMediaMap(map);
+
+    if (!changed) return;
+
+    // Забираем новый full‑200 и кладём (с лимитами)
+    const getRes = await fetch(new Request(url, { cache: 'reload' })).catch(()=>null);
+    if (getRes && getRes.ok && getRes.status === 200 && await shouldCacheNonRangeAudio(getRes)) {
+      const cache = await caches.open(MEDIA_CACHE);
+      await cache.put(url, getRes.clone());
+      const size = bytesFromHeader(getRes) || 0;
+      await upsertMediaItem(url, {
+        size,
+        etag: getRes.headers.get('etag'),
+        lastModified: getRes.headers.get('last-modified'),
+        revalidatedAt: now
+      });
+    }
+  } catch {}
 }
 
 self.addEventListener('message', (event) => {
@@ -6390,6 +6564,9 @@ self.addEventListener('message', (event) => {
   }
   if (data.type === 'NET_STATE' && data.state) {
     event.waitUntil(writeNetState(data.state));
+  }
+  if (data.type === 'CONFIG_UPDATE' && data.config) {
+    event.waitUntil(writeSwConfig(data.config));
   }
   if (data.type === 'SKIP_WAITING') {
     event.waitUntil(self.skipWaiting());
@@ -7338,6 +7515,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19196549635
-Time: 2025-11-08 17:56:15 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19196806749
+Time: 2025-11-08 18:19:11 UTC
 
