@@ -8,7 +8,7 @@
    Офлайн-пакеты: через сообщения OFFLINE_CACHE_ADD / OFFLINE_CACHE_CLEAR_CURRENT с прогрессом.
 */
 
-const SW_VERSION = '8.0.2';
+const SW_VERSION = '8.0.3';
 const CORE_CACHE = `core-${SW_VERSION}`;
 const RUNTIME_CACHE = `runtime-${SW_VERSION}`;
 const MEDIA_CACHE = `media-${SW_VERSION}`;
@@ -47,6 +47,7 @@ self.addEventListener('activate', (event) => {
     const allow = new Set([CORE_CACHE, RUNTIME_CACHE, MEDIA_CACHE, OFFLINE_CACHE, META_CACHE]);
     await Promise.all(keys.map(k => allow.has(k) ? Promise.resolve() : caches.delete(k)));
     await self.clients.claim();
+    try { await postToAllClients({ type: 'SW_VERSION', version: SW_VERSION }); } catch {}
   })());
 });
 
@@ -256,6 +257,12 @@ self.addEventListener('message', (event) => {
       const list = await readOfflineList();
       postToAllClients({ type: 'OFFLINE_STATE', value: list.length > 0 });
     })());
+  }
+  if (data.type === 'SKIP_WAITING') {
+    event.waitUntil(self.skipWaiting());
+  }
+  if (data.type === 'GET_SW_VERSION') {
+    event.waitUntil(postToAllClients({ type: 'SW_VERSION', version: SW_VERSION }));
   }
 });
 
