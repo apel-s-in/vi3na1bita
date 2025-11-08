@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-9f88642f649702d3cb65e4901997e31569bfe376.idx
-│   │       ├── pack-9f88642f649702d3cb65e4901997e31569bfe376.pack
-│   │       └── pack-9f88642f649702d3cb65e4901997e31569bfe376.rev
+│   │       ├── pack-3d40832f8eaae5ea106ee689067c96ae1fcb09fb.idx
+│   │       ├── pack-3d40832f8eaae5ea106ee689067c96ae1fcb09fb.pack
+│   │       └── pack-3d40832f8eaae5ea106ee689067c96ae1fcb09fb.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 08:13:11 UTC
+Сгенерировано: 2025-11-08 08:24:02 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -911,10 +911,36 @@ generateIndex();
       color: var(--secondary-color) !important; background:none; border:none; cursor:pointer; font-size:1em; text-transform:uppercase; font-weight:700; letter-spacing:.02em; text-decoration:underline; transition:.18s; padding:4px 16px; min-width:148px; text-align:center; border-radius:7px; display:block; margin: 0 auto;
     }
     .karaoke-btn:hover, .player-download-btn:hover { color:#fff !important; background:#273050; }
+    /* Ряд доп. кнопок (ТЕКСТ, СКАЧАТЬ, ЭКО) */
+    .player-extra-buttons-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 8px;
+      align-items: center;
+      width: 100%;
+      max-width: 395px;
+    }
     /* Ультра‑эконом (молния) */
-    .eco-btn { align-self: flex-end; color: var(--secondary-color); background: none; border: none; cursor: pointer; font-size: 1.1em; font-weight: 800; letter-spacing: .02em; padding: 4px 10px; border-radius: 7px; transition: .18s; }
-    .eco-btn:hover { color: #fff; background: #2a2f45; }
-    .eco-btn.eco-active { color: var(--primary-color); }
+    .eco-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 7px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.08);
+      color: var(--secondary-color);
+      cursor: pointer;
+      font-weight: 800;
+      letter-spacing: .02em;
+      transition: background .18s, color .18s, transform .12s;
+      justify-self: end;
+      min-height: 36px;
+    }
+    .eco-btn:hover { color: #fff; background: #2a2f45; transform: translateY(-1px); }
+    .eco-btn.eco-active { color: var(--primary-color); background: rgba(232,1,0,.12); border-color: rgba(232,1,0,.25); }
+    .eco-btn svg { width: 18px; height: 18px; display: block; }
+    .eco-btn .eco-label { font-size: .95em; user-select: none; }
 
     .bottom-controls-center { display:flex; flex-direction:column; align-items:center; justify-content:center; margin:32px auto 0 auto; gap:8px; width:100%; max-width:280px; padding-bottom: env(safe-area-inset-bottom); }
 
@@ -1240,8 +1266,8 @@ generateIndex();
   <div class="modal-bg" id="modal-offline"></div>
 <script>
   /* ====== Версия и настройки ====== */
-  const VERSION = '8.0.1';
-  const BUILD_DATE = '2025-11-03';
+  const VERSION = '8.0.3';
+  const BUILD_DATE = '2025-11-08';
   const PROMO_CODE = 'VITRINA2025';
 
   /* ====== Список альбомов: fallback ====== */
@@ -2266,20 +2292,31 @@ generateIndex();
         await loadAlbumByKey(sel.value);
         try { warmupOtherAlbums(sel.value); } catch {}
 
-        const st = PlayerState.restore();
-        if (st && st.album && albumByKey(st.album)) {
-          if (sel.value !== st.album) {
-            sel.value = st.album;
-            await loadAlbumByKey(st.album);
+        // Восстановление после обновления/перезагрузки
+        const resumeRaw = sessionStorage.getItem('resumeAfterReloadV1');
+        let resume = null;
+        if (resumeRaw) {
+          try { resume = JSON.parse(resumeRaw); } catch {}
+          sessionStorage.removeItem('resumeAfterReloadV1');
+        }
+
+        const stBase = resume || PlayerState.restore();
+        if (stBase && stBase.album && albumByKey(stBase.album)) {
+          if (sel.value !== stBase.album) {
+            sel.value = stBase.album;
+            await loadAlbumByKey(stBase.album);
           }
         }
-        if (st && Number.isInteger(st.trackIndex) && st.trackIndex >= 0 && st.trackIndex < (config.tracks || []).length) {
-          showTrack(st.trackIndex, false);
+        if (stBase && Number.isInteger(stBase.trackIndex) && stBase.trackIndex >= 0 && stBase.trackIndex < (config.tracks || []).length) {
+          showTrack(stBase.trackIndex, false);
           setTimeout(()=> {
             const a = document.getElementById('audio');
             if (a) {
-              a.currentTime = st.position || 0;
-              a.volume = (typeof st.volume === 'number') ? st.volume : a.volume;
+              a.currentTime = stBase.position || 0;
+              a.volume = (typeof stBase.volume === 'number') ? stBase.volume : a.volume;
+              if (resume && resume.wasPlaying === true) {
+                a.play().catch(()=>{});
+              }
             }
             applyLyricsViewMode();
             PlayerState.save();
@@ -2364,8 +2401,40 @@ generateIndex();
 
       detectIOSAndShowInstallGuide();
 
-      // Service Worker
+      // Service Worker + мягкое обновление с продолжением воспроизведения
       if ('serviceWorker' in navigator) {
+        function persistResumeBeforeReload() {
+          try {
+            const a = document.getElementById('audio');
+            const wasPlaying = a ? !a.paused : false;
+            const st = {
+              album: playingAlbumKey || currentAlbumKey || null,
+              trackIndex: typeof playingTrack === 'number' && playingTrack >= 0 ? playingTrack : currentTrack,
+              position: a ? Math.floor(a.currentTime || 0) : 0,
+              volume: a ? a.volume : 1,
+              wasPlaying
+            };
+            sessionStorage.setItem('resumeAfterReloadV1', JSON.stringify(st));
+          } catch {}
+        }
+
+        function setupUpdateFlow(reg) {
+          function onNewSWWaiting(sw) {
+            // Попросим версию SW
+            try { sw.postMessage({ type: 'GET_SW_VERSION' }); } catch {}
+          }
+          if (reg.waiting) onNewSWWaiting(reg.waiting);
+          reg.addEventListener('updatefound', () => {
+            const sw = reg.installing;
+            if (!sw) return;
+            sw.addEventListener('statechange', () => {
+              if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+                onNewSWWaiting(reg.waiting || sw);
+              }
+            });
+          });
+        }
+
         navigator.serviceWorker.register('./service-worker.js').then(async reg => {
           await navigator.serviceWorker.ready;
           syncOfflineState();
@@ -2374,21 +2443,36 @@ generateIndex();
           setInterval(async () => {
             try { const r = await navigator.serviceWorker.getRegistration(); if (r) r.update(); } catch(e) {}
           }, 60 * 60 * 1000);
+          setupUpdateFlow(reg);
         });
 
-        let __swReloaded = false;
-        navigator.serviceWorker.addEventListener('controllerchange', () => {
-          if (__swReloaded) return;
-          __swReloaded = true;
-          NotificationSystem.info('Обновление применено, перезагрузка...');
-          setTimeout(() => location.reload(), 300);
-        });
-
-        navigator.serviceWorker.addEventListener('message', event => {
+        navigator.serviceWorker.addEventListener('message', async (event) => {
           const msg = event.data || {};
           if (msg.type === 'OFFLINE_STATE') {
             offlineMode = !!msg.value;
             setOfflineUIState(offlineMode ? 'offline' : 'online');
+            return;
+          }
+          if (msg.type === 'SW_VERSION') {
+            const swVer = String(msg.version || '');
+            if (swVer && swVer !== VERSION) {
+              // Предложим обновить
+              const agree = confirm(`Доступно обновление плеера (${swVer}). Обновить сейчас? Воспроизведение продолжится с того же места.`);
+              if (agree) {
+                persistResumeBeforeReload();
+                const reg = await navigator.serviceWorker.getRegistration().catch(()=>null);
+                if (reg && (reg.waiting || reg.installing)) {
+                  const target = reg.waiting || reg.installing;
+                  try { target.postMessage({ type: 'SKIP_WAITING' }); } catch {}
+                }
+                // Ждём активации нового контроллера и перезагружаем
+                const onCtrl = () => {
+                  navigator.serviceWorker.removeEventListener('controllerchange', onCtrl);
+                  setTimeout(() => location.reload(), 150);
+                };
+                navigator.serviceWorker.addEventListener('controllerchange', onCtrl);
+              }
+            }
           }
         });
       }
@@ -2953,9 +3037,16 @@ generateIndex();
       </div>
       <div class="player-buttons-wrapper">
         <button class="lyrics-toggle-btn lyrics-normal" onclick="toggleLyricsView()" aria-label="Скрыть лирику" title="Скрыть лирику (Y)"><span class="lyrics-toggle-btn-visual">Т</span></button>
-        <button class="karaoke-btn" onclick="openLyricsModal()">ТЕКСТ</button>
-        <a class="player-download-btn" href="#" onclick="openDownloadModal(event)">СКАЧАТЬ ПЕСНЮ</a>
-        <button id="eco-btn" class="eco-btn" onclick="toggleEco()" title="Ультра‑эконом: минимальные обновления UI в фоне">⚡</button>
+        <div class="player-extra-buttons-row">
+          <button class="karaoke-btn" onclick="openLyricsModal()">ТЕКСТ</button>
+          <a class="player-download-btn" href="#" onclick="openDownloadModal(event)">СКАЧАТЬ ПЕСНЮ</a>
+          <button id="eco-btn" class="eco-btn" onclick="toggleEco()" aria-pressed="false" title="Ультра‑эконом: минимальные обновления UI в фоне">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M13 3L4 14h6l-1 7 9-11h-6l1-7z"></path>
+            </svg>
+            <span class="eco-label">ЭКО</span>
+          </button>
+        </div>
       </div>
     `;
 
@@ -4309,14 +4400,22 @@ ${lines}
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
       }
       if (audioContext.state === 'suspended') { audioContext.resume().catch(()=>{}); }
-      if (audioSource) { try { audioSource.disconnect(); } catch {} audioSource = null; }
+      // Отвяжем старые узлы, если были
+      try { if (audioSource) audioSource.disconnect(); } catch {}
+      audioSource = null;
+
       if (!analyser) {
         analyser = audioContext.createAnalyser();
         analyser.fftSize = 256;
       }
+
+      // ВАЖНО: подключаем источник только к анализатору, НЕ к destination!
+      // Так аудио продолжит играть через «родной» вывод элемента <audio>,
+      // а WebAudio в фоне (iOS) может быть приостановлен — без потери звука.
       audioSource = audioContext.createMediaElementSource(audioEl);
       audioSource.connect(analyser);
-      analyser.connect(audioContext.destination);
+      // Ничего не подключаем к audioContext.destination — исключаем влияние WebAudio на звук.
+
     } catch (e) { /* без паники, просто не будет пульса */ }
   }
   function startLogoPulsation() {
