@@ -1889,6 +1889,9 @@
 
       detectIOSAndShowInstallGuide();
 
+      // Регистрация фоновых обработчиков (freeze/resume и пр.)
+      try { setupBackgroundEventHandlers(); } catch (e) { console.warn('BG handlers failed', e); }
+
       // Service Worker + мягкое обновление с продолжением воспроизведения
       if ('serviceWorker' in navigator) {
         function persistResumeBeforeReload() {
@@ -2094,6 +2097,45 @@
       });
     })();
   }
+
+  /* ====== Фон: Web Locks + Wake Lock (Android) ====== */
+  let __wakeLock = null;
+  let __playbackLockReleaser = null;
+
+  async function setPlaybackLocks(active) {
+    try {
+      if (active) {
+        // Web Locks: удерживаем ресурс воспроизведения (если поддерживается)
+        if (navigator.locks && typeof navigator.locks.request === 'function' && !__playbackLockReleaser) {
+          navigator.locks.request('audio-playback', { mode: 'shared' }, async lock => {
+            await new Promise(resolve => { __playbackLockReleaser = resolve; });
+          }).catch(()=>{});
+        }
+        // Wake Lock (экран): полезно на Android при активном экране
+        if ('wakeLock' in navigator && !document.hidden && !__wakeLock) {
+          try {
+            __wakeLock = await navigator.wakeLock.request('screen');
+            __wakeLock.addEventListener('release', () => { __wakeLock = null; }, { once: true });
+          } catch (e) {
+            // может быть запрещено политикой/ОС — молча игнорируем
+          }
+        }
+      } else {
+        if (__playbackLockReleaser) { try { __playbackLockReleaser(); } catch {} __playbackLockReleaser = null; }
+        if (__wakeLock) { try { await __wakeLock.release(); } catch {} __wakeLock = null; }
+      }
+    } catch {}
+  }
+
+  // Автонастройка Wake Lock при смене видимости
+  document.addEventListener('visibilitychange', () => {
+    try {
+      const a = document.getElementById('audio');
+      const playing = a && !a.paused;
+      if (!document.hidden && playing) setPlaybackLocks(true);
+      else setPlaybackLocks(false);
+    } catch {}
+  });
 
   /* ====== Плеер/избранное ====== */
   let currentTrack = -1;
@@ -2509,8 +2551,8 @@
     audio.addEventListener('stalled',        onStalled);
     audio.addEventListener('error',          onError);
     // playbackState обновляем через onplay/onpause (переприсваивается, не накапливается)
-    audio.onplay  = () => { try { navigator.mediaSession.playbackState = 'playing'; } catch {} };
-    audio.onpause = () => { try { navigator.mediaSession.playbackState = 'paused';  } catch {} };
+    audio.onplay  = () => { try { navigator.mediaSession.playbackState = 'playing'; } catch {} ; try { setPlaybackLocks(true); } catch {} ; try { startPositionUpdates(); } catch {} };
+    audio.onpause = () => { try { navigator.mediaSession.playbackState = 'paused';  } catch {} ; try { setPlaybackLocks(false); } catch {} ; try { stopPositionUpdates(); } catch {} };
     __audioHandlers = { onLoaded, onTime, onEnded, onWaiting, onStalled, onError };
   }
 
@@ -4841,6 +4883,8 @@ ${lines}
         const resources = await buildOfflineFavoritesAndGalleriesList();
         NotificationSystem.info('ОФФЛАЙН: будут доступны ⭐ избранные треки. Добавьте любимые песни в избранное, чтобы они играли без интернета. Галереи (webp) тоже будут кэшированы.');
         reg.active.postMessage({ type: 'OFFLINE_CACHE_ADD', resources });
+        // One-off Background Sync: докачать при появлении сети/выходе из фона (если доступно)
+        try { if (reg.sync && reg.sync.register) { await reg.sync.register('offline-favorites-cache'); } } catch {}
         NotificationSystem.info(`Кэшируем офлайн (${resources.length} файлов)...`);
         offlineDownloading = true;
       } else {
