@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-bfaee3fc60a4d456542e793929b9fa1e640a5822.idx
-│   │       ├── pack-bfaee3fc60a4d456542e793929b9fa1e640a5822.pack
-│   │       └── pack-bfaee3fc60a4d456542e793929b9fa1e640a5822.rev
+│   │       ├── pack-b6081bc9b6e445075a0a7ae7aec70c2030d68be7.idx
+│   │       ├── pack-b6081bc9b6e445075a0a7ae7aec70c2030d68be7.pack
+│   │       └── pack-b6081bc9b6e445075a0a7ae7aec70c2030d68be7.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 09:11:34 UTC
+Сгенерировано: 2025-11-08 09:55:36 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -875,6 +875,8 @@ generateIndex();
     .volume-slider { appearance:none; width:100%; height:20px; background:transparent; outline:none; cursor:pointer; position:relative; z-index:2; }
     .volume-slider::-webkit-slider-thumb { appearance:none; width:20px; height:20px; background:#fff; border-radius:50%; cursor:pointer; box-shadow:0 2px 8px rgba(0,0,0,.3); }
     .volume-slider::-moz-range-thumb { width:20px; height:20px; background:#fff; border-radius:50%; cursor:pointer; border:none; box-shadow:0 2px 8px rgba(0,0,0,.3); }
+    /* iOS: системный регулятор громкости не управляется из веба — скрываем слайдер */
+    body.ios .volume-control-wrapper { display: none !important; }
 
     /* Sleep */
     .sleep-timer-btn { background:none; border:none; color:var(--secondary-color); cursor:pointer; padding:8px; border-radius:50%; transition:.2s; display:flex; align-items:center; justify-content:center; width:44px; height:44px; position:relative; }
@@ -2485,34 +2487,38 @@ generateIndex();
       }
 
       document.addEventListener('visibilitychange', () => {
-        if (document.hidden) {
-          // не останавливаем аудио — пусть играет в фоне
-          try {
-            const a = document.getElementById('audio');
-            if (a && a.paused) setTimeout(() => a.play().catch(()=>{}), 50);
-          } catch {}
+        const a = document.getElementById('audio');
 
-          // стоп автопрокрутки галереи
+        if (document.hidden) {
+          // Запомним, играл ли плеер до ухода в фон (чтобы не автозапускать затем)
+          try { __wasPlayingBeforeHidden = !!(a && !a.paused); } catch { __wasPlayingBeforeHidden = false; }
+
+          // Стоп автопрокрутки галереи
           if (coverAutoplay) { clearInterval(coverAutoplay); coverAutoplay = null; }
-          // пауза анимации лирики (запомним, если была активна)
+          // Пауза анимации лирики (запомним, если была активна)
           if (animationEnabled) { window.__resumeAnimationOnFocus = true; applyAnimationState(false); }
-          // выгрузим аудио-граф «бита», чтобы не грел телефон
+          // Выгрузим аудио‑граф «бита», чтобы не грел телефон
           if (bitEnabled) { stopLogoPulsation(); }
         } else {
           checkSleepTimer();
-          // возобновляем автопрокрутку
+
+          // Синхронизируем UI c фактическим воспроизведением
+          syncUiFromPlayback();
+
+          // Возобновляем автопрокрутку галереи
           if (!coverAutoplay && Array.isArray(coverGalleryArr) && coverGalleryArr.length > 1) {
             startCoverAutoPlay();
           }
-          // возвращаем анимацию, если была активна
+          // Возвращаем анимацию, если была активна
           if (window.__resumeAnimationOnFocus) {
             applyAnimationState(true);
             window.__resumeAnimationOnFocus = false;
           }
-          // если бит включён — пересоздадим граф по требованию
+          // Если «бит» включён — пересоздадим граф по требованию
           if (bitEnabled) { initAudioContext(); startLogoPulsation(); }
         }
       });
+
       window.addEventListener('focus', checkSleepTimer);
 
       window.addEventListener('offline', () => {
@@ -2520,19 +2526,15 @@ generateIndex();
         const a = document.getElementById('audio');
         if (a) {
           try { __savedResumePosition = a.currentTime || 0; } catch {}
-          try { a.pause(); } catch {}
         }
       });
       window.addEventListener('online', () => {
         stopOfflineToasts();
         NotificationSystem.success('Соединение восстановлено');
         const a = document.getElementById('audio');
-        if (a) {
-          if (typeof __savedResumePosition === 'number') {
-            try { a.currentTime = __savedResumePosition; } catch {}
-            __savedResumePosition = null;
-          }
-          a.play().catch(()=>{});
+        if (a && typeof __savedResumePosition === 'number') {
+          try { a.currentTime = __savedResumePosition; } catch {}
+          __savedResumePosition = null;
         }
       });
     })();
@@ -2573,6 +2575,8 @@ generateIndex();
 
   let __offlineToastInterval = null;
   let __savedResumePosition = null;
+  let __wasPlayingBeforeHidden = false;
+  let __wasPlayingBeforeOffline = false;
 
   function startOfflineToasts() {
     try { if (__offlineToastInterval) return;
@@ -2908,7 +2912,6 @@ generateIndex();
     const onWaiting = (ev) => {
       if (navigator.onLine === false) {
         try { __savedResumePosition = audio.currentTime || 0; } catch {}
-        try { audio.pause(); } catch {}
         startOfflineToasts();
       }
     };
@@ -3755,6 +3758,17 @@ generateIndex();
 
       const p = a.play();
       if (p && p.catch) p.catch(()=>{});
+
+      // Доп. устойчивость для iOS PWA: повторный play и «kick» через load()+play()
+      if (isIOSStandalone()) {
+        setTimeout(() => { if (document.hidden && !a.paused) { a.play().catch(()=>{}); } }, 700);
+        setTimeout(() => {
+          if (document.hidden && !a.paused) {
+            try { a.load(); } catch {}
+            a.play().catch(()=>{});
+          }
+        }, 1600);
+      }
     } catch {}
 
     try { setupMediaSessionForPlayback(); } catch {}
@@ -3774,6 +3788,50 @@ generateIndex();
     box.querySelector('.title').textContent = `${String(cand + 1).padStart(2, '0')}. ${title}`;
     box.querySelector('.title').title = `${String(cand + 1).padStart(2, '0')}. ${title}`;
     box.style.display = '';
+  }
+
+  // Мягкая синхронизация UI по фактически играющему треку (без пересоздания <audio>)
+  function syncUiFromPlayback() {
+    const a = document.getElementById('audio');
+    if (!a) return;
+
+    // Если играем «этот же альбом», приводим курсор и подсветку к playingTrack
+    if (playingAlbumKey === currentAlbumKey) {
+      if (typeof playingTrack === 'number' && playingTrack >= 0 && currentTrack !== playingTrack) {
+        currentTrack = playingTrack;
+        try {
+          document.querySelectorAll('#track-list .track').forEach(el => el.classList.remove('current'));
+          const row = document.getElementById(`trk${currentTrack}`);
+          if (row) row.classList.add('current');
+          const lp = document.getElementById('lyricsplayerblock');
+          if (row && lp && row.parentNode) {
+            if (row.nextSibling) row.parentNode.insertBefore(lp, row.nextSibling);
+            else row.parentNode.appendChild(lp);
+          }
+        } catch {}
+        // Обновим лирику под текущий трек
+        const pc = getPlayerConfig();
+        const tr = pc?.tracks?.[currentTrack];
+        if (tr && tr.lyrics) loadLyrics(tr.lyrics);
+      }
+    }
+
+    applyMiniModeUI();
+    updateMiniNowHeader();
+    updateNextUpLabel();
+
+    // Обновим позицию в Media Session и таймеры UI один раз
+    try {
+      if ('mediaSession' in navigator && typeof navigator.mediaSession.setPositionState === 'function') {
+        navigator.mediaSession.setPositionState({
+          duration: isFinite(a.duration) ? a.duration : 0,
+          playbackRate: a.playbackRate || 1,
+          position: a.currentTime || 0
+        });
+      }
+    } catch {}
+    try { onAudioMetadataLoaded({ currentTarget: a }); } catch {}
+    try { onAudioTimeUpdate({ currentTarget: a }); } catch {}
   }
   function applyMiniModeUI() {
     const lp = document.getElementById('lyricsplayerblock');
@@ -5004,6 +5062,9 @@ ${lines}
 
   // Инициализация при загрузке
   window.addEventListener('load', () => {
+    // Помечаем iOS для UI-особенностей (скрыть слайдер громкости)
+    try { if (/iphone|ipad|ipod/i.test(navigator.userAgent)) document.body.classList.add('ios'); } catch {}
+
     applyLogos();
     const passed = localStorage.getItem('promoPassed') === '1';
     if (passed) {
@@ -6352,6 +6413,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19190830259
-Time: 2025-11-08 08:56:09 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19191008077
+Time: 2025-11-08 09:12:57 UTC
 
