@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-cd8623882159187adbf0d240373696764c02f5d5.idx
-│   │       ├── pack-cd8623882159187adbf0d240373696764c02f5d5.pack
-│   │       └── pack-cd8623882159187adbf0d240373696764c02f5d5.rev
+│   │       ├── pack-29fef5b988f84d8958174b2f7a7d4c47ad87f2eb.idx
+│   │       ├── pack-29fef5b988f84d8958174b2f7a7d4c47ad87f2eb.pack
+│   │       └── pack-29fef5b988f84d8958174b2f7a7d4c47ad87f2eb.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 17:08:52 UTC
+Сгенерировано: 2025-11-08 17:11:53 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -5970,9 +5970,10 @@ async function serveRangeFromCacheOrNetwork(request) {
   const rangeHeader = request.headers.get('range');
   
   // Для фоновых запросов увеличиваем таймаут
-  const isBackground = request.headers.get('purpose') === 'prefetch' || 
-                       request.referrer.includes('background') ||
-                       self.clients.matchAll({ includeUncontrolled: true }).then(clients => clients.length === 0);
+  const clients = await self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).catch(() => []);
+  const isBackground = request.headers.get('purpose') === 'prefetch' ||
+                       (request.referrer && request.referrer.includes('background')) ||
+                       clients.length === 0;
   
   // Пытаемся найти полный ответ в кэшах
   const mediaCache = await caches.open(MEDIA_CACHE);
@@ -6209,10 +6210,30 @@ async function writeOfflineList(list) {
   }));
 }
 
+// Храним «последний запрошенный офлайн-список» для Background Sync
+async function writeLastRequestedOffline(list) {
+  const cache = await caches.open(META_CACHE);
+  const key = new Request('meta:last-requested-offline');
+  await cache.put(key, new Response(JSON.stringify(Array.from(new Set(list))), {
+    headers: { 'content-type': 'application/json' }
+  }));
+}
+async function readLastRequestedOffline() {
+  const cache = await caches.open(META_CACHE);
+  const key = new Request('meta:last-requested-offline');
+  const res = await cache.match(key);
+  if (!res) return [];
+  try { const j = await res.json(); return Array.isArray(j) ? j : []; } catch { return []; }
+}
+
 self.addEventListener('message', (event) => {
   const data = event.data || {};
   if (data.type === 'OFFLINE_CACHE_ADD') {
-    event.waitUntil(offlineAddResources(Array.isArray(data.resources) ? data.resources : []));
+    const resources = Array.isArray(data.resources) ? data.resources : [];
+    event.waitUntil((async () => {
+      await writeLastRequestedOffline(resources);
+      await offlineAddResources(resources);
+    })());
   }
   if (data.type === 'OFFLINE_CACHE_CLEAR_CURRENT') {
     event.waitUntil(clearCurrentOfflineResources());
@@ -6228,6 +6249,22 @@ self.addEventListener('message', (event) => {
   }
   if (data.type === 'GET_SW_VERSION') {
     event.waitUntil(postToAllClients({ type: 'SW_VERSION', version: SW_VERSION }));
+  }
+});
+
+// One-off Background Sync: докачка офлайн-списка при появлении сети
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'offline-favorites-cache') {
+    event.waitUntil((async () => {
+      try {
+        const pending = await readLastRequestedOffline();
+        if (pending && pending.length) {
+          await offlineAddResources(pending);
+        }
+      } catch (e) {
+        // пропускаем — sync повторится позже
+      }
+    })());
   }
 });
 
@@ -6248,7 +6285,7 @@ async function offlineAddResources(resources) {
   for (const url of toCache) {
     try {
       // Пытаемся с CORS, иначе — no-cors (opaque)
-      let res = await fetch(url, { cache: 'no-cache' }).catch(() => null);
+      let res = await fetch(url, { cache: 'no-cache', keepalive: true }).catch(() => null);
       if (!res || !(res.ok || res.type === 'opaque')) {
         res = await fetch(url, { mode: 'no-cors' }).catch(() => null);
       }
@@ -6263,6 +6300,7 @@ async function offlineAddResources(resources) {
     }
   }
   await writeOfflineList([...prev, ...toCache]);
+  await writeLastRequestedOffline([]); // очистим «последний запрос» — успешно собрали
   await postToAllClients({ type: 'OFFLINE_DONE' });
 }
 
