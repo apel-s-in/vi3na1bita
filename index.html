@@ -2405,6 +2405,8 @@
       audioEl.id = 'audio';
       audioEl.preload = 'metadata';
       audioEl.playsInline = true;
+      audioEl.autoplay = true; // помогает iOS воспринимать автопродолжение как непрерывное воспроизведение
+      audioEl.setAttribute('autoplay', '');
       audioEl.crossOrigin = 'anonymous';
       audioEl.setAttribute('aria-hidden', 'true');
       audioEl.tabIndex = -1;
@@ -2640,14 +2642,22 @@
     const remainingEl = document.getElementById('time-remaining');
     if (remainingEl) remainingEl.textContent = '00:00';
     const audio = (e && (e.currentTarget || e.target)) || document.getElementById('audio');
+
     if (repeatMode && audio) {
       audio.currentTime = 0;
       const p = audio.play();
       if (p && p.catch) p.catch(()=>{});
+      return;
+    }
+
+    // Ключ: в фоне (iOS, экран заблокирован/вкладка неактивна) не трогаем UI — мгновенно переключаем src
+    if (document.hidden) {
+      backgroundNextTrack();
     } else {
       nextTrack();
     }
   }
+
   function seekToPosition(e) {
     const audio = document.getElementById('audio');
     if (!audio || !isFinite(audio.duration) || audio.duration <= 0) return;
@@ -2972,6 +2982,101 @@
       return available[(i + 1) % available.length];
     }
     return (playingTrack + 1) % len;
+  }
+
+  // ЛЁГКИЙ переход на следующий трек в фоне (iOS): без перерисовок, только смена src и play()
+  function backgroundNextTrack() {
+    const a = document.getElementById('audio');
+    if (!a) return;
+
+    if (shouldUsePlaybackContext()) {
+      const len = playingTracks ? playingTracks.length : 0;
+      const available = getAvailableTracksForAlbum(playingAlbumKey, len);
+      if (!available.length) return;
+      let idx;
+
+      if (shuffleMode) {
+        if (!Array.isArray(playingShuffledPlaylist) || playingShuffledPlaylist.length === 0) {
+          createPlayingShuffledPlaylist();
+        }
+        playingShuffleIndex++;
+        if (playingShuffleIndex >= playingShuffledPlaylist.length) {
+          createPlayingShuffledPlaylist();
+          playingShuffleIndex = 0;
+        }
+        idx = playingShuffledPlaylist[playingShuffleIndex];
+        if (available.length > 1 && idx === playingTrack) {
+          playingShuffleIndex = (playingShuffleIndex + 1) % playingShuffledPlaylist.length;
+          idx = playingShuffledPlaylist[playingShuffleIndex];
+        }
+      } else if (favoritesOnlyMode) {
+        const pos = available.indexOf(playingTrack);
+        idx = available[(pos + 1) % available.length];
+      } else {
+        idx = (playingTrack + 1) % len;
+      }
+
+      const tr = playingTracks?.[idx];
+      if (!tr) return;
+
+      // Обновляем состояние и запускаем
+      playingTrack = idx;
+      try {
+        a.src = tr.audio;
+        a.currentTime = 0;
+        a.play().catch(()=>{});
+      } catch {}
+
+      try { setupMediaSessionForPlayback(); } catch {}
+      prefetchNextTrackAssetsForPlayback();
+      return;
+    }
+
+    // Текущий альбом (обычный контекст)
+    updateAvailableTracks();
+    if (!availableTracks.length) return;
+
+    let idx;
+    if (shuffleMode) {
+      if (!Array.isArray(shuffledPlaylist) || shuffledPlaylist.length === 0) {
+        createShuffledPlaylist();
+      }
+      shuffleIndex++;
+      if (shuffleIndex >= shuffledPlaylist.length) {
+        createShuffledPlaylist();
+        shuffleIndex = 0;
+      }
+      idx = shuffledPlaylist[shuffleIndex];
+      if (availableTracks.length > 1 && idx === currentTrack) {
+        shuffleIndex = (shuffleIndex + 1) % shuffledPlaylist.length;
+        idx = shuffledPlaylist[shuffleIndex];
+      }
+    } else if (favoritesOnlyMode) {
+      const pos = availableTracks.indexOf(currentTrack);
+      idx = availableTracks[(pos + 1) % availableTracks.length];
+    } else {
+      idx = (currentTrack + 1) % (config?.tracks?.length || 0);
+    }
+
+    const tr = config?.tracks?.[idx];
+    if (!tr) return;
+
+    // Обновляем состояние воспроизведения под текущий альбом
+    currentTrack = idx;
+    playingTrack = idx;
+    playingAlbumKey = currentAlbumKey;
+    playingTracks = config?.tracks || null;
+    playingArtist = config?.artist || 'Витрина Разбита';
+    playingAlbumName = config?.albumName || 'Альбом';
+
+    try {
+      a.src = tr.audio;
+      a.currentTime = 0;
+      a.play().catch(()=>{});
+    } catch {}
+
+    try { setupMediaSessionForPlayback(); } catch {}
+    prefetchNextTrackAssetsForPlayback();
   }
   function updateNextUpLabel() {
     const box = document.getElementById('next-up');
