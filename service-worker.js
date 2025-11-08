@@ -99,34 +99,58 @@ function parseRangeHeader(range, totalLength) {
 async function serveRangeFromCacheOrNetwork(request) {
   const url = request.url;
   const rangeHeader = request.headers.get('range');
+  
+  // Для фоновых запросов увеличиваем таймаут
+  const isBackground = request.headers.get('purpose') === 'prefetch' || 
+                       request.referrer.includes('background') ||
+                       self.clients.matchAll({ includeUncontrolled: true }).then(clients => clients.length === 0);
+  
   // Пытаемся найти полный ответ в кэшах
   const mediaCache = await caches.open(MEDIA_CACHE);
   const offlineCache = await caches.open(OFFLINE_CACHE);
   let res = await mediaCache.match(url) || await offlineCache.match(url);
-
-  // Если нет в кэше — идём в сеть (и кладём в MEDIA_CACHE)
+  
+  // Если нет в кэше — идём в сеть
   if (!res) {
     try {
-      const net = await fetch(request);
+      // Увеличиваем таймаут для фоновых запросов
+      const timeout = isBackground ? 30000 : 10000;
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeout);
+      
+      const net = await fetch(request, { 
+        signal: controller.signal,
+        keepalive: true // критично для фоновых запросов
+      });
+      
+      clearTimeout(id);
+      
       if (net && (net.ok || net.status === 206)) {
-        try { await mediaCache.put(url, net.clone()); } catch {}
+        // Кэшируем только в том случае, если запрос успешный
+        try { 
+          await mediaCache.put(url, net.clone()); 
+        } catch (e) {
+          console.warn('Failed to cache media', e);
+        }
         return net;
       }
       return net;
-    } catch {
+    } catch (e) {
+      console.warn('Network request failed for audio', url, e);
       return new Response('', { status: 404 });
     }
   }
-
-  // Если ответ «opaque» (no-cors) — тело недоступно, отдаём как есть (пусть браузер сам справится)
+  
+  // Если ответ «opaque» (no-cors) — тело недоступно, отдаём как есть
   if (res.type === 'opaque') {
     return res;
   }
-
-  // Готовим 206 из полного тела
+  
+  // Готовим 206 Partial Content из полного тела
   const buf = await res.arrayBuffer();
   const total = buf.byteLength;
   const range = parseRangeHeader(rangeHeader, total);
+  
   if (!range) {
     // Если Range некорректный — отдадим 416
     return new Response('', {
@@ -136,15 +160,20 @@ async function serveRangeFromCacheOrNetwork(request) {
       }
     });
   }
+  
   const { start, end } = range;
   const chunk = buf.slice(start, end + 1);
   const contentType = res.headers.get('content-type') || 'audio/mpeg';
   const headers = new Headers(res.headers);
+  
   headers.set('Content-Type', contentType);
   headers.set('Content-Length', String(chunk.byteLength));
   headers.set('Accept-Ranges', 'bytes');
   headers.set('Content-Range', `bytes ${start}-${end}/${total}`);
-
+  // Добавляем заголовки для фоновых запросов
+  headers.set('Cache-Control', 'public, max-age=31536000');
+  headers.set('Keep-Alive', 'timeout=60, max=100');
+  
   return new Response(chunk, { status: 206, headers });
 }
 
