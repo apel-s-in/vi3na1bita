@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-a2733d02929e0b185b8f9974c95349ab6fdb1f87.idx
-│   │       ├── pack-a2733d02929e0b185b8f9974c95349ab6fdb1f87.pack
-│   │       └── pack-a2733d02929e0b185b8f9974c95349ab6fdb1f87.rev
+│   │       ├── pack-733b887ccb480f481df9a106c0bf28c65d41f747.idx
+│   │       ├── pack-733b887ccb480f481df9a106c0bf28c65d41f747.pack
+│   │       └── pack-733b887ccb480f481df9a106c0bf28c65d41f747.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 13:19:22 UTC
+Сгенерировано: 2025-11-08 13:35:40 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -2446,6 +2446,8 @@ generateIndex();
 
         navigator.serviceWorker.register('./service-worker.js').then(async reg => {
           await navigator.serviceWorker.ready;
+          // Просим персистентное хранилище, чтобы кэш не очищали слишком агрессивно
+          try { if (navigator.storage?.persist) navigator.storage.persist().catch(()=>{}); } catch {}
           syncOfflineState();
           try { reg.active && reg.active.postMessage({ type: 'REQUEST_OFFLINE_STATE' }); } catch(e){}
           try { reg.update(); } catch(e) {}
@@ -2551,6 +2553,7 @@ generateIndex();
   let shuffledPlaylist = [];
   let shuffleIndex = 0;
   let repeatMode = false;
+  let autoNextDisabled = false; // «Один трек»: отключить автопереход (не действует при Repeat)
   let favoritesOnlyMode = false;
   let availableTracks = [];
   let favoritesFilterActive = false;
@@ -2643,6 +2646,8 @@ generateIndex();
 
   const FAVORITES_REFS_KEY = 'favoritesAlbumRefs:v1';
   let favoritesRefsModel = null;
+  // Кэш обложек альбомов (первая картинка из центральной галереи)
+  const albumCoverCache = Object.create(null);
 
   /* Старые совместимые хелперы */
   function getPlayerConfig() {
@@ -2753,11 +2758,33 @@ generateIndex();
   async function buildFavoritesRefsModel() {
     const sortedRefs = getSortedFavoritesRefs();
     const out = [];
+
+    async function getAlbumCoverUrl(albumKey) {
+      if (albumCoverCache[albumKey]) return albumCoverCache[albumKey];
+      try {
+        const cid = centralIdForAlbumKey(albumKey);
+        if (!cid) { albumCoverCache[albumKey] = 'img/logo.png'; return albumCoverCache[albumKey]; }
+        const baseDir = `${CENTRAL_GALLERY_BASE}${cid}/`;
+        const r = await fetch(baseDir + 'index.json', { cache: 'force-cache' });
+        const j = r.ok ? await r.json() : null;
+        const first = j && (Array.isArray(j.items) ? j.items[0] : (Array.isArray(j) ? j[0] : null));
+        if (first) {
+          const norm = normalizeGalleryItem(first, baseDir);
+          const url = (norm && (norm.formats?.webp || norm.formats?.full || norm.src)) || 'img/logo.png';
+          albumCoverCache[albumKey] = url;
+          return url;
+        }
+      } catch {}
+      albumCoverCache[albumKey] = 'img/logo.png';
+      return albumCoverCache[albumKey];
+    }
+
     for (const ref of sortedRefs) {
       const cfg = await getAlbumConfigByKey(ref.a);
       const tr = cfg?.tracks?.[ref.t];
       if (!tr) continue;
       const active = getLikedForAlbum(ref.a).includes(ref.t);
+      const cover = await getAlbumCoverUrl(ref.a);
       out.push({
         title: tr.title,
         audio: tr.audio,
@@ -2767,7 +2794,8 @@ generateIndex();
         __t: ref.t,
         __artist: cfg?.artist || 'Витрина Разбита',
         __album: cfg?.albumName || 'Альбом',
-        __active: active
+        __active: active,
+        __cover: cover
       });
     }
     favoritesRefsModel = out;
@@ -2979,7 +3007,25 @@ generateIndex();
 
     if (doPlay) {
       audio.currentTime = 0;
-      const tryPlay = () => { const p = audio.play(); if (p && p.catch) p.catch(()=>{}); };
+      const tryPlay = () => {
+        const p = audio.play();
+        if (p && p.catch) p.catch(()=>{});
+        // Фейд‑ин 180 мс
+        try {
+          const targetVol = Math.max(0, Math.min(1, (parseFloat(localStorage.getItem('playerVolume')) || audio.volume || 1)));
+          if (targetVol > 0 && !audio.muted) {
+            const prev = targetVol;
+            audio.volume = 0.001;
+            const t0 = performance.now(), dur = 180;
+            const step = (ts) => {
+              const k = Math.min(1, (ts - t0) / dur);
+              audio.volume = prev * k;
+              if (k < 1) requestAnimationFrame(step);
+            };
+            requestAnimationFrame(step);
+          }
+        } catch {}
+      };
       if (isNaN(audio.duration) || !isFinite(audio.duration)) {
         audio.addEventListener('canplay', tryPlay, { once: true }); setTimeout(tryPlay, 200);
       } else { tryPlay(); }
@@ -3091,10 +3137,30 @@ generateIndex();
 
     attachPlaybackStateListeners();
 
-    // Кнопка эко — восстановим визуальное состояние
-    try { const eb = document.getElementById('eco-btn'); if (eb) eb.classList.toggle('eco-active', ultraEcoEnabled); } catch {}
-
-    if (bitEnabled) { try { initAudioContext(); startLogoPulsation(); } catch{} }
+    // Кнопка эко — восстановим визуальное состояние + dblclick для настройки интервала
+    try {
+      const eb = document.getElementById('eco-btn');
+      if (eb) {
+        eb.classList.toggle('eco-active', ultraEcoEnabled);
+        if (!eb.__ecoDbl) {
+          eb.__ecoDbl = true;
+          eb.addEventListener('dblclick', () => {
+            const cur = parseInt(localStorage.getItem('ecoUiIntervalSec') || '5', 10);
+            const val = prompt('Интервал обновления UI в ЭКО (секунды, 2–60):', String(cur));
+            const n = parseInt(val || '5', 10);
+            if (Number.isFinite(n) && n >= 2 && n <= 60) {
+              localStorage.setItem('ecoUiIntervalSec', String(n));
+              if (ultraEcoEnabled) {
+                // Применим сразу
+                __uiUpdateMinIntervalMs = n * 1000;
+                __progressThrottleMs = n * 1000;
+              }
+              NotificationSystem.success(`ЭКО: интервал ${n} с`);
+            }
+          });
+        }
+      }
+    } catch {}
 
     loadLyrics(tr.lyrics);
     setupMediaSessionForPlayback();
@@ -3109,6 +3175,34 @@ generateIndex();
     applyMiniModeUI();
     updateNextUpLabel();
     updateMiniNowHeader();
+
+    // Кнопка выбора аудиовыхода (если поддерживается)
+    try {
+      const audioEl = document.getElementById('audio');
+      const row2 = document.querySelectorAll('.player-controls-row')[1];
+      if (audioEl && row2 && typeof audioEl.setSinkId === 'function' && !document.getElementById('sink-btn')) {
+        const btn = document.createElement('button');
+        btn.className = 'player-control-btn';
+        btn.id = 'sink-btn';
+        btn.title = 'Выбрать аудиовыход';
+        btn.setAttribute('aria-label', 'Выбрать аудиовыход');
+        btn.textContent = 'OUT';
+        btn.onclick = async () => {
+          try {
+            const devices = (await navigator.mediaDevices?.enumerateDevices?.()) || [];
+            const outs = devices.filter(d => d.kind === 'audiooutput');
+            if (!outs.length) { NotificationSystem.info('Аудиовыходы недоступны'); return; }
+            const names = outs.map((d, i) => `${i+1}. ${d.label || 'Динамики'}`);
+            const pick = prompt(`Выберите устройство вывода (номер):\n${names.join('\n')}`, '1');
+            const idx = (parseInt(pick,10) || 1) - 1;
+            const dev = outs[Math.max(0, Math.min(outs.length - 1, idx))];
+            await audioEl.setSinkId(dev.deviceId);
+            NotificationSystem.success('Аудиовыход переключён');
+          } catch { NotificationSystem.error('Не удалось переключить аудиовыход'); }
+        };
+        row2.insertBefore(btn, row2.firstChild);
+      }
+    } catch {}
 
     dedupePlayerBlock();
   }
@@ -3284,10 +3378,14 @@ generateIndex();
     const now = Date.now();
     if (now - lastTimeUpdate >= __uiUpdateMinIntervalMs) {
       lastTimeUpdate = now;
-      const elapsedEl = document.getElementById('time-elapsed');
-      const remainingEl = document.getElementById('time-remaining');
-      if (elapsedEl) elapsedEl.textContent = formatTime(currentTime);
-      if (remainingEl) remainingEl.textContent = formatTime(Math.max(0, duration - currentTime));
+      const updateDom = () => {
+        const elapsedEl = document.getElementById('time-elapsed');
+        const remainingEl = document.getElementById('time-remaining');
+        if (elapsedEl) elapsedEl.textContent = formatTime(currentTime);
+        if (remainingEl) remainingEl.textContent = formatTime(Math.max(0, duration - currentTime));
+      };
+      const ric = window.requestIdleCallback || function(cb){ setTimeout(()=>cb({didTimeout:false}), 0); };
+      ric(updateDom);
       // Media Session: обновляем позицию
       try {
         if ('mediaSession' in navigator && typeof navigator.mediaSession.setPositionState === 'function') {
@@ -3313,7 +3411,11 @@ generateIndex();
       if (p && p.catch) p.catch(()=>{});
       return;
     }
-
+    // «Один трек»: если включено — не переходим дальше (кроме Repeat)
+    if (autoNextDisabled) {
+      try { audio.pause(); } catch {}
+      return;
+    }
     // Ключ: в фоне (iOS, экран заблокирован/вкладка неактивна) не трогаем UI — мгновенно переключаем src
     if (document.hidden) {
       backgroundNextTrack();
@@ -3606,7 +3708,25 @@ generateIndex();
     setupMediaSessionForPlayback();
     prefetchNextTrackAssetsForPlayback();
 
-    if (doPlay) { a.currentTime = 0; a.play().catch(()=>{}); }
+    if (doPlay) {
+      a.currentTime = 0;
+      a.play().catch(()=>{});
+      // Фейд‑ин 180 мс
+      try {
+        const targetVol = Math.max(0, Math.min(1, (parseFloat(localStorage.getItem('playerVolume')) || a.volume || 1)));
+        if (targetVol > 0 && !a.muted) {
+          const prev = targetVol;
+          a.volume = 0.001;
+          const t0 = performance.now(), dur = 180;
+          const step = (ts) => {
+            const k = Math.min(1, (ts - t0) / dur);
+            a.volume = prev * k;
+            if (k < 1) requestAnimationFrame(step);
+          };
+          requestAnimationFrame(step);
+        }
+      } catch {}
+    }
 
     applyMiniModeUI();
     updateNextUpLabel();
@@ -3618,11 +3738,24 @@ generateIndex();
     if (!('mediaSession' in navigator) || !playingTracks) return;
     const tr = playingTracks[playingTrack];
     if (!tr) return;
+
+    // Подбираем корректную обложку: для «Избранного» — обложка альбома трека
+    let artUrl = playingCover || 'img/logo.png';
+    if (playingAlbumKey === SPECIAL_FAVORITES_KEY && Array.isArray(favoritesRefsModel)) {
+      const ref = favoritesRefsModel[playingTrack];
+      if (ref && ref.__cover) artUrl = ref.__cover;
+    }
+    const artSet = [
+      { src: artUrl, sizes: '128x128', type: 'image/png' },
+      { src: artUrl, sizes: '256x256', type: 'image/png' },
+      { src: artUrl, sizes: '512x512', type: 'image/png' }
+    ];
+
     navigator.mediaSession.metadata = new MediaMetadata({
       title: tr.title,
       artist: playingArtist || 'Витрина Разбита',
       album: playingAlbumName || 'Альбом',
-      artwork: [{ src: playingCover || 'img/logo.png', sizes: '512x512', type: 'image/png' }]
+      artwork: artSet
     });
     navigator.mediaSession.setActionHandler('play',  ()=>{ const a=document.getElementById('audio'); a&&a.play(); updatePlayPauseIcon(); });
     navigator.mediaSession.setActionHandler('pause', ()=>{ const a=document.getElementById('audio'); a&&a.pause(); updatePlayPauseIcon(); });
@@ -3759,15 +3892,45 @@ generateIndex();
       const p = a.play();
       if (p && p.catch) p.catch(()=>{});
 
+      // Мягкий фейд‑ин при старте (180 мс), если не мут и громкость > 0
+      try {
+        const targetVol = Math.max(0, Math.min(1, (parseFloat(localStorage.getItem('playerVolume')) || a.volume || 1)));
+        if (targetVol > 0 && !a.muted) {
+          const prev = targetVol;
+          a.volume = 0.001;
+          const t0 = performance.now(), dur = 180;
+          const step = (ts) => {
+            const k = Math.min(1, (ts - t0) / dur);
+            a.volume = prev * k;
+            if (k < 1) requestAnimationFrame(step);
+          };
+          requestAnimationFrame(step);
+        }
+      } catch {}
+
       // Доп. устойчивость для iOS PWA: повторный play и «kick» через load()+play()
       if (isIOSStandalone()) {
-        setTimeout(() => { if (document.hidden && !a.paused) { a.play().catch(()=>{}); } }, 700);
+        // Первая попытка через 700мс: если ПО‑ПРЕЖНЕМУ ПАУЗА — ещё play()
+        setTimeout(() => { if (document.hidden && a.paused) { a.play().catch(()=>{}); } }, 700);
+        // Вторая попытка через 1600мс: если всё ещё пауза — load()+play()
         setTimeout(() => {
-          if (document.hidden && !a.paused) {
+          if (document.hidden && a.paused) {
             try { a.load(); } catch {}
             a.play().catch(()=>{});
           }
         }, 1600);
+        // Телеметрия: если к 2500мс всё ещё пауза — логируем и инкрементируем счётчик
+        setTimeout(() => {
+          try {
+            if (document.hidden && a.paused) {
+              const key = 'autonextFails:v1';
+              const raw = localStorage.getItem(key);
+              const cnt = raw ? parseInt(raw, 10) || 0 : 0;
+              localStorage.setItem(key, String(cnt + 1));
+              console.warn('[auto-next] iOS PWA fallback did not start playback. UA:', navigator.userAgent);
+            }
+          } catch {}
+        }, 2500);
       }
     } catch {}
 
@@ -4166,28 +4329,23 @@ generateIndex();
   /* Prefetch следующего трека */
   function prefetchNextTrackAssetsForPlayback() {
     const cand = computeNextIndexPlayback();
-    if (cand < 0 || !playingTracks?.[cand]) return;
-    const t = playingTracks[cand];
-    prefetchAudioLink(t.audio, 'audio');
-    if (t.lyrics) prefetchAudioLink(t.lyrics, 'fetch');
-    if (t.fulltext) prefetchAudioLink(t.fulltext, 'fetch');
+    if (cand >= 0 && playingTracks?.[cand]) {
+      const t = playingTracks[cand];
+      prefetchAudioLink(t.audio, 'audio');
+      if (t.lyrics) prefetchAudioLink(t.lyrics, 'fetch');
+      if (t.fulltext) prefetchAudioLink(t.fulltext, 'fetch');
+    }
+    // Если включён Repeat — держим текущий трек тёплым в кэше
+    if (repeatMode && typeof playingTrack === 'number' && playingTrack >= 0 && playingTracks?.[playingTrack]) {
+      const cur = playingTracks[playingTrack];
+      prefetchAudioLink(cur.audio, 'audio');
+    }
   }
   function prefetchAudioLink(url, asType = 'audio') {
     if (!url) return;
     try {
-      // Кольцевой буфер из max 8 ссылок
-      if (!window.__pfLinks) window.__pfLinks = [];
-      const link = document.createElement('link');
-      link.rel = 'prefetch';
-      link.as = asType; // 'audio' | 'fetch'
-      link.href = url;
-      link.crossOrigin = 'anonymous';
-      document.head.appendChild(link);
-      window.__pfLinks.push(link);
-      if (window.__pfLinks.length > 8) {
-        const old = window.__pfLinks.shift();
-        try { old.remove(); } catch {}
-      }
+      // Прогреваем через SW, чтобы положить ответ в MEDIA_CACHE
+      fetch(url, { cache: 'reload', mode: 'cors' }).catch(()=>{});
     } catch (e) {}
   }
 
@@ -4218,6 +4376,15 @@ generateIndex();
       case 'T': e.preventDefault(); toggleSleepMenu(); break;
       case 'A': e.preventDefault(); toggleAnimation(); break;
       case 'B': e.preventDefault(); toggleBit(); break;
+      case 'O':
+        e.preventDefault();
+        autoNextDisabled = !autoNextDisabled;
+        if (repeatMode && autoNextDisabled) {
+          NotificationSystem.info('Повтор трека активен — опция «Один трек» без эффекта');
+        } else {
+          NotificationSystem.info(autoNextDisabled ? '⏹ Автопереход отключён' : '▶ Автопереход включён');
+        }
+        break;
       case '1': if (bitEnabled){ bitIntensity=100; localStorage.setItem('bitIntensity','100'); NotificationSystem.info('💿 Интенсивность: 100%'); } break;
       case '2': if (bitEnabled){ bitIntensity=50; localStorage.setItem('bitIntensity','50'); NotificationSystem.info('💿 Интенсивность: 50%'); } break;
       case '3': if (bitEnabled){ bitIntensity=15; localStorage.setItem('bitIntensity','15'); NotificationSystem.info('💿 Интенсивность: 15%'); } break;
@@ -4659,8 +4826,9 @@ ${lines}
   function applyEcoState(on, { silent = false } = {}) {
     ultraEcoEnabled = !!on;
     // Троттлинги
-    __uiUpdateMinIntervalMs = ultraEcoEnabled ? 5000 : 1000;
-    __progressThrottleMs    = ultraEcoEnabled ? 5000 : 1000;
+    const ecoSec = Math.max(2, Math.min(60, parseInt(localStorage.getItem('ecoUiIntervalSec') || '5', 10)));
+    __uiUpdateMinIntervalMs = ultraEcoEnabled ? (ecoSec * 1000) : 1000;
+    __progressThrottleMs    = ultraEcoEnabled ? (ecoSec * 1000) : 1000;
 
     // Анимации/бит/галерея
     if (ultraEcoEnabled) {
@@ -4955,7 +5123,8 @@ ${lines}
     const reg = await navigator.serviceWorker.ready.catch(()=>null);
     if (reg && reg.active) {
       if (offlineMode) {
-        const resources = await buildOfflineResourceListForCurrentView();
+        const resources = await buildOfflineFavoritesAndGalleriesList();
+        NotificationSystem.info('ОФФЛАЙН: будут доступны ⭐ избранные треки. Добавьте любимые песни в избранное, чтобы они играли без интернета. Галереи (webp) тоже будут кэшированы.');
         reg.active.postMessage({ type: 'OFFLINE_CACHE_ADD', resources });
         NotificationSystem.info(`Кэшируем офлайн (${resources.length} файлов)...`);
         offlineDownloading = true;
@@ -5007,6 +5176,58 @@ ${lines}
 
     // Иконки/картинки интерфейса
     ['img/logo.png','img/star.png','img/star2.png'].forEach(p => out.add(new URL(p, location.href).toString()));
+
+    return Array.from(out);
+  }
+  // Оффлайн «Мини»: все избранные треки (всех альбомов) + все webp галерей
+  async function buildOfflineFavoritesAndGalleriesList() {
+    const out = new Set();
+    // База UI
+    ['.', './index.html', './manifest.json', './service-worker.js',
+     './img/logo.png','./img/star.png','./img/star2.png'
+    ].forEach(x => out.add(new URL(x, location.href).toString()));
+
+    // Избранные по всем альбомам
+    const likesMap = (function(){
+      try { return JSON.parse(localStorage.getItem('likedTracks:v2')) || {}; } catch { return {}; }
+    })();
+    const albumKeys = Object.keys(likesMap);
+    for (const akey of albumKeys) {
+      const liked = Array.isArray(likesMap[akey]) ? likesMap[akey] : [];
+      if (!liked.length) continue;
+      // Загружаем конфиг альбома и включаем треки/лирику/полный текст
+      const cfg = await getAlbumConfigByKey(akey);
+      if (!cfg || !Array.isArray(cfg.tracks)) continue;
+      liked.forEach(i => {
+        const t = cfg.tracks[i];
+        if (!t) return;
+        out.add(t.audio);
+        if (t.lyrics) out.add(t.lyrics);
+        if (t.fulltext) out.add(t.fulltext);
+      });
+    }
+
+    // Все центральные галереи (webp)
+    async function collectAllGalleryWebpUrls() {
+      const ids = Array.from(CENTRAL_ALLOWED_IDS || []);
+      for (const id of ids) {
+        try {
+          const baseDir = `${CENTRAL_GALLERY_BASE}${id}/`;
+          out.add(new URL(baseDir + 'index.json', location.href).toString());
+          const r = await fetch(baseDir + 'index.json', { cache: 'force-cache' });
+          if (!r.ok) continue;
+          const j = await r.json();
+          const items = Array.isArray(j.items) ? j.items : (Array.isArray(j) ? j : []);
+          for (const raw of items) {
+            const norm = normalizeGalleryItem(raw, baseDir);
+            if (norm && norm.type === 'img') {
+              if (norm.formats?.webp) out.add(norm.formats.webp);
+            }
+          }
+        } catch {}
+      }
+    }
+    await collectAllGalleryWebpUrls();
 
     return Array.from(out);
   }
@@ -6480,6 +6701,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19191455801
-Time: 2025-11-08 09:57:15 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19193589314
+Time: 2025-11-08 13:19:44 UTC
 
