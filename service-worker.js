@@ -258,18 +258,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Аудио: stale-while-revalidate (кэшируем ТОЛЬКО 200 full)
+  // Аудио: stale-while-revalidate (кэшируем ТОЛЬКО 200 full И ТОЛЬКО до лимита по размеру на текущей сети)
   if (isAudioRequest(request)) {
     event.respondWith((async () => {
       const cache = await caches.open(MEDIA_CACHE);
       const cached = await cache.match(request);
 
-      // Фоновая перевалидация
+      // Фоновая перевалидация non-Range
       (async () => {
         try {
           const netRes = await fetch(request);
-          // Кладем в кэш только 200 и не-opaque (не 206 и не no-cors)
-          if (netRes && netRes.ok && netRes.status === 200 && netRes.type !== 'opaque' && !request.headers.has('range')) {
+          if (!request.headers.has('range') && await shouldCacheNonRangeAudio(netRes)) {
             cache.put(request, netRes.clone()).catch(() => {});
           }
         } catch {}
@@ -349,6 +348,43 @@ async function readLastRequestedOffline() {
   try { const j = await res.json(); return Array.isArray(j) ? j : []; } catch { return []; }
 }
 
+// --- NET_STATE + лимиты для non-Range аудио ---
+async function writeNetState(state) {
+  try {
+    const cache = await caches.open(META_CACHE);
+    await cache.put(new Request('meta:net-state'), new Response(JSON.stringify(state || {}), {
+      headers: { 'content-type': 'application/json' }
+    }));
+  } catch {}
+}
+async function readNetState() {
+  try {
+    const cache = await caches.open(META_CACHE);
+    const res = await cache.match('meta:net-state');
+    if (!res) return { saveData: false, downlink: null, effectiveType: null };
+    const j = await res.json().catch(()=>null);
+    return j && typeof j === 'object' ? j : { saveData: false, downlink: null, effectiveType: null };
+  } catch {
+    return { saveData: false, downlink: null, effectiveType: null };
+  }
+}
+function bytesFromHeader(res) {
+  const h = res && res.headers ? res.headers.get('content-length') : null;
+  if (!h) return null;
+  const n = parseInt(h, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+async function shouldCacheNonRangeAudio(response) {
+  if (!response || !response.ok || response.status !== 200 || response.type === 'opaque') return false;
+  const ns = await readNetState();
+  const slow = !!ns.saveData || (typeof ns.downlink === 'number' && ns.downlink > 0 && ns.downlink <= 1.3) || (ns.effectiveType && /(^|-)2g$/.test(ns.effectiveType));
+  const limitMB = slow ? 10 : 25; // лимиты: медленная сеть / обычная
+  const limitB = limitMB * 1024 * 1024;
+  const size = bytesFromHeader(response);
+  if (size == null) return false; // без Content-Length — не кэшируем
+  return size <= limitB;
+}
+
 self.addEventListener('message', (event) => {
   const data = event.data || {};
   if (data.type === 'OFFLINE_CACHE_ADD') {
@@ -366,6 +402,9 @@ self.addEventListener('message', (event) => {
       const list = await readOfflineList();
       postToAllClients({ type: 'OFFLINE_STATE', value: list.length > 0 });
     })());
+  }
+  if (data.type === 'NET_STATE' && data.state) {
+    event.waitUntil(writeNetState(data.state));
   }
   if (data.type === 'SKIP_WAITING') {
     event.waitUntil(self.skipWaiting());
