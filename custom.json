@@ -1,4 +1,12 @@
 {
+  "rumEndpoint": "",
+  "sw": {
+    "mediaMaxCacheMB": 150,
+    "nonRangeMaxStoreMB": 25,
+    "nonRangeMaxStoreMBSlow": 10,
+    "allowUnknownSize": false,
+    "revalidateDays": 7
+  },
   "items": [
     {
       "type": "ym",
