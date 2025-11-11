@@ -57,9 +57,9 @@ vi3na1bita/
 │   ├── objects/
 │   │   ├── info/
 │   │   └── pack/
-│   │       ├── pack-0971899bc62fe41d54bb28f90a14a3b3439404f4.idx
-│   │       ├── pack-0971899bc62fe41d54bb28f90a14a3b3439404f4.pack
-│   │       └── pack-0971899bc62fe41d54bb28f90a14a3b3439404f4.rev
+│   │       ├── pack-d4b6869175cee3fdd0472202362d4e910bef27ec.idx
+│   │       ├── pack-d4b6869175cee3fdd0472202362d4e910bef27ec.pack
+│   │       └── pack-d4b6869175cee3fdd0472202362d4e910bef27ec.rev
 │   ├── refs/
 │   │   ├── heads/
 │   │   │   └── main
@@ -226,7 +226,7 @@ vi3na1bita/
 └── service-worker.js
 
 
-Сгенерировано: 2025-11-08 18:26:45 UTC
+Сгенерировано: 2025-11-11 21:57:10 UTC
 //=================================================
 // FILE: /.github/workflows/collect-critical-logs.yml
 name: Collect critical CI logs
@@ -2691,9 +2691,13 @@ generateIndex();
         const isHidden = document.hidden;
   
         if (isHidden) {
-          // Сохраняем текущее состояние
-          __wasPlayingBeforeHidden = !!(a && !a.paused);
-          __savedResumePosition = a ? a.currentTime : 0;
+          // Сохраняем текущее состояние, если музыка играет
+          if (a && !a.paused) {
+            __wasPlayingBeforeHidden = true;
+            __savedResumePosition = a.currentTime;
+          } else {
+            __wasPlayingBeforeHidden = false;
+          }
     
           // Останавливаем UI-анимации для экономии ресурсов
           if (coverAutoplay) { clearInterval(coverAutoplay); coverAutoplay = null; }
@@ -2705,66 +2709,15 @@ generateIndex();
             window.__savedBitState = bitEnabled;
             stopLogoPulsation(); 
           }
-    
-          // Для iOS - гарантируем, что воспроизведение продолжится
-          if (isIOS() && __wasPlayingBeforeHidden) {
-            resumeAudioContextIfNeeded();
-            // Дополнительная проверка через 1с
-            setTimeout(() => {
-              if (document.hidden && a && a.paused) {
-                a.play().catch(e => console.warn('iOS background resume failed', e));
-              }
-            }, 1000);
-          }
-    
-          console.log('App going to background, position saved:', __savedResumePosition);
         } else {
           // Восстанавливаем состояние из фона
           checkSleepTimer();
+          resumeAudioContextIfNeeded();
     
-          // iOS требует возобновления аудио-контекста
-          if (isIOS()) {
-            resumeAudioContextIfNeeded();
-          }
-    
-          // Если музыка играла до ухода в фон и не остановлена таймером сна
-          if (__wasPlayingBeforeHidden && !sleepTimerTarget) {
-            if (a) {
-              // Восстанавливаем позицию
-              if (typeof __savedResumePosition === 'number' && !isNaN(__savedResumePosition)) {
-                try {
-                  a.currentTime = __savedResumePosition;
-                } catch (e) {
-                  console.warn('Failed to restore audio position', e);
-                }
-              }
-              
-              // Гарантируем продолжение воспроизведения
-              if (a.paused) {
-                const playAttempt = a.play();
-                if (playAttempt && playAttempt.catch) {
-                  playAttempt.catch(e => {
-                    console.warn('Play after foreground failed', e);
-                    // Для iOS - дополнительные попытки
-                    if (isIOS()) {
-                      setTimeout(() => {
-                        if (a.paused) {
-                          a.play().catch(console.warn);
-                          // Метод "тихого" воспроизведения для iOS
-                          initSilentAudioPlayback();
-                        }
-                      }, 500);
-                    }
-                  });
-                }
-              }
-            }
-          }
-    
-          // Синхронизируем UI
+          // Принудительно синхронизируем UI с реальным состоянием плеера
           syncUiFromPlayback();
     
-          // Восстанавливаем UI-анимации
+          // Возобновляем UI-анимации, если они были активны
           if (window.__savedAnimationState) {
             applyAnimationState(window.__savedAnimationState);
             window.__savedAnimationState = null;
@@ -2774,13 +2727,14 @@ generateIndex();
             startLogoPulsation();
             window.__savedBitState = null;
           }
-    
-          // Возобновляем галерею
           if (!coverAutoplay && Array.isArray(coverGalleryArr) && coverGalleryArr.length > 1) {
             startCoverAutoPlay();
           }
     
-          console.log('App returning to foreground, resuming playback');
+          // Гарантируем, что воспроизведение продолжится, если оно было активно
+          if (a && __wasPlayingBeforeHidden && a.paused && !sleepTimerTarget) {
+            a.play().catch(e => console.warn('Play after foreground failed', e));
+          }
         }
   
         // Обновляем состояние Media Session при любом изменении видимости
@@ -2849,7 +2803,7 @@ generateIndex();
       const a = document.getElementById('audio');
       const playing = a && !a.paused;
       if (!document.hidden && playing) setPlaybackLocks(true);
-      else setPlaybackLocks(false);
+      else if (__wakeLock) { try { __wakeLock.release(); } catch {} __wakeLock = null; }
     } catch {}
   });
 
@@ -5279,11 +5233,7 @@ ${lines}
         const bassCount = Math.max(4, Math.floor(dataArray.length * 0.2));
         let sum = 0;
         for (let i = 0; i < bassCount; i++) sum += dataArray[i];
-        level = (sum / (bassCount * 255));
-      } else {
-        level = 0.5 + 0.5 * Math.sin(ts / 200);
-      }
-
+        level = (
       const intensity = Math.max(0, Math.min(1, bitIntensity / 100));
       const scale = 1 + (level * 0.12 * intensity);
       logo.style.transform = `scale(${scale.toFixed(3)})`;
@@ -5833,8 +5783,6 @@ ${lines}
   </script>
 </body>
 </html>
-
-
 
 //=================================================
 // FILE: /manifest.json
@@ -7515,6 +7463,6 @@ CI SUMMARY
 Repo: apel-s-in/vi3na1bita
 Workflow: Deploy to GitHub Pages
 Status: success
-URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19196806749
-Time: 2025-11-08 18:19:11 UTC
+URL: https://github.com/apel-s-in/vi3na1bita/actions/runs/19196900700
+Time: 2025-11-08 18:27:11 UTC
 
